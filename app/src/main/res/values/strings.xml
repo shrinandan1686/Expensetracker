@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TrackIt - UPI Expense Tracker</string>
+
+    <!-- Home -->
+    <string name="home_greeting">Good morning</string>
+    <string name="home_monthly_spend">Monthly Spend</string>
+    <string name="home_add_expense">Add Expense</string>
+    <string name="home_view_history">View All</string>
+    <string name="home_no_expenses">No expenses yet. Tap + to add one!</string>
+
+    <!-- Add Expense -->
+    <string name="add_expense_title">Add Expense</string>
+    <string name="add_expense_amount_hint">Amount (₹)</string>
+    <string name="add_expense_note_hint">Note (optional)</string>
+    <string name="add_expense_category">Category</string>
+    <string name="add_expense_payment_method">Payment Method</string>
+    <string name="add_expense_save">Save Expense</string>
+
+    <!-- History -->
+    <string name="history_title">Expense History</string>
+    <string name="history_search_hint">Search expenses…</string>
+    <string name="history_filter_all">All</string>
+    <string name="history_filter_week">This Week</string>
+    <string name="history_filter_month">This Month</string>
+    <string name="history_empty">No expenses found.</string>
+
+    <!-- Errors -->
+    <string name="error_invalid_amount">Please enter a valid amount.</string>
+    <string name="error_sync_failed">Sync failed. Will retry later.</string>
+    <string name="error_generic">Something went wrong. Please try again.</string>
+
+    <!-- Actions -->
+    <string name="action_dismiss">Dismiss</string>
+    <string name="action_undo">Undo</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_delete">Delete</string>
+</resources>

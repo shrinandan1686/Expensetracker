@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- ──────────────── Permissions ──────────────── -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- SMS: required to read and receive bank/UPI payment SMS -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.READ_SMS" />
+
+    <!-- Boot: allows SyncWorker to be re-scheduled after device restart -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Overlay: draw the expense popup over all apps after UPI payment detection -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!--
+        API 34+: Foreground services need a declared type.
+        "specialUse" covers overlay/windowing services not in other categories.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <application
+        android:name=".TrackItApp"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.TrackIt">
+
+        <!-- ──────────────── Main Activity ──────────────── -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.TrackIt">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- ──────────────── SMS Receiver ──────────────── -->
+        <!--
+            android:exported="true"  — required; SMS_RECEIVED is a system broadcast.
+            android.permission.BROADCAST_SMS — prevents third-party apps from spoofing
+            SMS intents to this receiver.
+
+            Priority 999 on SMS_RECEIVED: processes bank SMSs before other apps read
+            the message (does NOT abort the broadcast — it only prioritises our handler).
+        -->
+        <receiver
+            android:name=".sms.SmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+
+            <!-- Intercept incoming SMS from the system -->
+            <intent-filter android:priority="999">
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+
+            <!-- Re-enqueue WorkManager sync after device reboot -->
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <!-- ↑ QUICKBOOT_POWERON covers HTC/OnePlus fast-boot (cold start) -->
+            </intent-filter>
+
+        </receiver>
+
+        <!-- ──────────────── Expense Overlay Service ──────────────── -->
+        <!--
+            android:exported="false" — only started from within this app (SmsReceiver).
+            android:foregroundServiceType="specialUse" — required on API 34+ for services
+            that display content over other apps using TYPE_APPLICATION_OVERLAY.
+        -->
+        <service
+            android:name=".overlay.ExpenseOverlayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
+
+    </application>
+
+</manifest>
