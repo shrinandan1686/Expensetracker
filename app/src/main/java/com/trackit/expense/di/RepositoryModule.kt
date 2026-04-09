@@ -3,8 +3,12 @@ package com.trackit.expense.di
 import com.google.gson.Gson
 import com.trackit.expense.data.repository.BudgetRepositoryImpl
 import com.trackit.expense.data.repository.ExpenseRepositoryImpl
+import com.trackit.expense.data.repository.PreferenceRepositoryImpl
 import com.trackit.expense.domain.repository.BudgetRepository
 import com.trackit.expense.domain.repository.ExpenseRepository
+import com.trackit.expense.domain.repository.PreferenceRepository
+import com.trackit.expense.domain.repository.SettingsRepository
+import com.trackit.expense.data.repository.SettingsRepositoryImpl
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -35,6 +39,18 @@ abstract class RepositoryModule {
     abstract fun bindBudgetRepository(
         impl: BudgetRepositoryImpl
     ): BudgetRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindPreferenceRepository(
+        impl: PreferenceRepositoryImpl
+    ): PreferenceRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindSettingsRepository(
+        impl: SettingsRepositoryImpl
+    ): SettingsRepository
 
     companion object {
         /**

@@ -1,0 +1,33 @@
+# Android/Gradle
+.gradle/
+build/
+local.properties
+*.apk
+*.aar
+*.jks
+*.keystore
+bin/
+gen/
+
+# IntelliJ/Android Studio
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Node/Wrangler (for trackit-api)
+node_modules/
+.wrangler/
+.dev.vars
+dist/
+.output/
+
+# macOS
+.DS_Store
+
+# Misc
+*.log
+temp/
+tmp/
+file-system-probe.gradle

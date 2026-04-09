@@ -17,5 +17,5 @@ import javax.inject.Inject
 class SyncExpensesUseCase @Inject constructor(
     private val repository: ExpenseRepository
 ) {
-    suspend operator fun invoke(): Result<Unit> = repository.syncExpenses()
+    operator fun invoke() = repository.enqueueSyncWork()
 }

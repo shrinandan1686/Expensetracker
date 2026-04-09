@@ -42,6 +42,9 @@ interface BudgetDao {
     @Query("SELECT * FROM budgets WHERE month = :month LIMIT 1")
     fun getByMonth(month: String): Flow<BudgetEntity?>
 
+    @Query("SELECT * FROM budgets WHERE month = :month LIMIT 1")
+    suspend fun getByMonthOneShot(month: String): BudgetEntity?
+
     /** All budgets, most recent month first. */
     @Query("SELECT * FROM budgets ORDER BY month DESC")
     fun getAll(): Flow<List<BudgetEntity>>

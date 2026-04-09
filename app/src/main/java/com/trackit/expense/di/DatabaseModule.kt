@@ -3,7 +3,9 @@ package com.trackit.expense.di
 import android.content.Context
 import androidx.room.Room
 import androidx.work.WorkManager
+import com.trackit.expense.data.local.dao.AccountDao
 import com.trackit.expense.data.local.dao.BudgetDao
+import com.trackit.expense.data.local.dao.CategoryDao
 import com.trackit.expense.data.local.dao.ExpenseDao
 import com.trackit.expense.data.local.db.DatabaseMigrations
 import com.trackit.expense.data.local.db.TrackItDatabase
@@ -12,7 +14,13 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import javax.inject.Provider
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import androidx.room.RoomDatabase
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
  * Hilt module providing Room database, DAO, and WorkManager instances.
@@ -38,15 +46,26 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideTrackItDatabase(
-        @ApplicationContext context: Context
+        @ApplicationContext context: Context,
+        categoryDaoProvider: Provider<CategoryDao>
     ): TrackItDatabase = Room.databaseBuilder(
         context,
         TrackItDatabase::class.java,
         TrackItDatabase.DATABASE_NAME
     )
-        // DEV: fallback to destructive migration — uncomment addMigrations() for production
+        .addCallback(object : RoomDatabase.Callback() {
+            override fun onCreate(db: SupportSQLiteDatabase) {
+                super.onCreate(db)
+                // Pre-seed categories on creation
+                CoroutineScope(Dispatchers.IO).launch {
+                    val dao = categoryDaoProvider.get()
+                    if (dao.getCategoryCount() == 0) {
+                        dao.insertCategories(TrackItDatabase.getDefaultCategories())
+                    }
+                }
+            }
+        })
         .fallbackToDestructiveMigration()
-        // PROD: .addMigrations(DatabaseMigrations.MIGRATION_1_2, DatabaseMigrations.MIGRATION_2_3)
         .build()
 
     @Provides
@@ -56,6 +75,14 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideBudgetDao(database: TrackItDatabase): BudgetDao = database.budgetDao()
+
+    @Provides
+    @Singleton
+    fun provideAccountDao(database: TrackItDatabase): AccountDao = database.accountDao()
+
+    @Provides
+    @Singleton
+    fun provideCategoryDao(database: TrackItDatabase): CategoryDao = database.categoryDao()
 
     /**
      * Provides a singleton [WorkManager] instance.

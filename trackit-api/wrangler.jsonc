@@ -1,0 +1,33 @@
+/**
+ * For more details on how to configure Wrangler, refer to:
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "trackit-api",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-04-09",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"global_fetch_strictly_public"
+	],
+	"assets": {
+		// The path to the directory containing the `index.html` file to be served at `/`
+		"directory": "./public"
+	},
+	"observability": {
+		"enabled": true
+	},
+	"upload_source_maps": true,
+	"kv_namespaces": [
+		{
+			"binding": "SESSIONS",
+			"id": "placeholder_kv_id"
+		}
+	],
+	"vars": {
+		"MONGODB_API_URL": "https://data.mongodb-api.com/app/data-xxxx/endpoint/data/v1",
+		"MONGODB_DATASOURCE": "Cluster0",
+		"MONGODB_DATABASE": "trackit"
+	}
+}

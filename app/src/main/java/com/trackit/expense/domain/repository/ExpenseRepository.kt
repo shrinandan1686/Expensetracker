@@ -44,6 +44,11 @@ interface ExpenseRepository {
     /** Single expense by its UUID [id]. Emits null if not found. */
     fun getById(id: String): Flow<Expense?>
 
+    /**
+     * Spending totals grouped by category for a specific month.
+     */
+    fun getCategoryTotalsByMonth(month: String): Flow<List<com.trackit.expense.data.local.dao.CategoryTotal>>
+
     // ────────────────────────────── WRITES ────────────────────────────────────
 
     /**

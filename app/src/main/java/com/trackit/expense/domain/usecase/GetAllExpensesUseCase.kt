@@ -18,16 +18,6 @@ class GetAllExpensesUseCase @Inject constructor(
 }
 
 /**
- * Use case: observe only unreviewed (auto-detected) expenses.
- * Useful for the "Pending Review" badge / list in the Home screen.
- */
-class GetUnloggedExpensesUseCase @Inject constructor(
-    private val repository: ExpenseRepository
-) {
-    operator fun invoke(): Flow<List<Expense>> = repository.getUnlogged()
-}
-
-/**
  * Use case: observe expenses for a specific calendar month.
  * @param month ISO month string — "YYYY-MM" (e.g. "2026-03").
  */

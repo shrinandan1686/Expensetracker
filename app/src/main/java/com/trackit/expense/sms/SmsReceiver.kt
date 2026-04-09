@@ -53,7 +53,7 @@ class SmsReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
-            Telephony.Sms.Intents.SMS_RECEIVED_ACTION -> handleSmsReceived(intent)
+            Telephony.Sms.Intents.SMS_RECEIVED_ACTION -> handleSmsReceived(context, intent)
             Intent.ACTION_BOOT_COMPLETED              -> handleBootCompleted(context)
         }
     }
@@ -62,7 +62,7 @@ class SmsReceiver : BroadcastReceiver() {
     // SMS RECEIVED
     // ─────────────────────────────────────────────────────────────────────────────
 
-    private fun handleSmsReceived(intent: Intent) {
+    private fun handleSmsReceived(context: Context, intent: Intent) {
         val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent) ?: return
 
         // Group all parts of multi-part SMS by originating address

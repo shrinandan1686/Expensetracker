@@ -57,6 +57,9 @@ class ExpenseRepositoryImpl @Inject constructor(
     override fun getById(id: String): Flow<Expense?> =
         expenseDao.getById(id).map { it?.toDomain() }
 
+    override fun getCategoryTotalsByMonth(month: String): Flow<List<com.trackit.expense.data.local.dao.CategoryTotal>> =
+        expenseDao.getTotalByCategoryForMonth(month)
+
     // ─────────────────────────────────────────────────────────────────────────
     // Writes — Room first, then enqueue sync
     // ─────────────────────────────────────────────────────────────────────────

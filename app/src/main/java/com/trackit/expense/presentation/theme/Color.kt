@@ -3,10 +3,15 @@ package com.trackit.expense.presentation.theme
 import androidx.compose.ui.graphics.Color
 
 // ─────────────── Brand Palette ───────────────
-val TrackItPrimary       = Color(0xFF6C63FF)   // Purple
-val TrackItPrimaryDark   = Color(0xFF4B44CC)
-val TrackItSecondary     = Color(0xFF03DAC6)   // Teal accent
-val TrackItTertiary      = Color(0xFFFF6584)   // Rose accent
+val TrackItPrimary       = Color(0xFF6750A4)   // Deep Purple (M3 Baseline)
+val TrackItPrimaryDark   = Color(0xFF4F378B)
+val TrackItSecondary     = Color(0xFF625B71)
+val TrackItTertiary      = Color(0xFF7D5260)
+
+// ─────────────── Budget Status Colors ───────────────
+val BudgetSuccess        = Color(0xFF4CAF50)   // Green <50%
+val BudgetWarning        = Color(0xFFFFC107)   // Yellow 50-80%
+val BudgetError          = Color(0xFFF44336)   // Red >80%
 
 // ─────────────── Dark Theme Surfaces ───────────────
 val DarkBackground       = Color(0xFF0D0D1A)

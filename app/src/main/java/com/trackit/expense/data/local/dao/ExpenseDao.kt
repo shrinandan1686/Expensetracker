@@ -137,6 +137,13 @@ interface ExpenseDao {
     """)
     fun getTotalByMonth(month: String): Flow<Double>
 
+    @Query("""
+        SELECT COALESCE(SUM(amount), 0.0) FROM expenses
+        WHERE strftime('%Y-%m', datetime(transaction_at / 1000, 'unixepoch')) = :month
+          AND is_logged = 1
+    """)
+    suspend fun getTotalByMonthOneShot(month: String): Double
+
     /**
      * Sum grouped by category for [month]. Returns a list of (category, total) pairs.
      * Useful for budget progress bars.
@@ -149,6 +156,19 @@ interface ExpenseDao {
         ORDER BY total DESC
     """)
     fun getTotalByCategoryForMonth(month: String): Flow<List<CategoryTotal>>
+
+    /**
+     * Sum grouped by category for an explicit date range.
+     * Used by [com.trackit.expense.worker.WeeklySummaryWorker].
+     */
+    @Query("""
+        SELECT category, COALESCE(SUM(amount), 0.0) AS total FROM expenses
+        WHERE transaction_at >= :startMs AND transaction_at < :endMs
+          AND is_logged = 1
+        GROUP BY category
+        ORDER BY total DESC
+    """)
+    suspend fun getTotalByCategoryForRange(startMs: Long, endMs: Long): List<CategoryTotal>
 
     // ─────────────────────────────── SYNC ───────────────────────────────────
 

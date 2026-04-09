@@ -2,9 +2,9 @@ package com.trackit.expense.presentation.add
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.trackit.expense.domain.model.Category
 import com.trackit.expense.domain.model.Expense
 import com.trackit.expense.domain.usecase.AddExpenseUseCase
+import com.trackit.expense.overlay.ExpenseCategory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,31 +14,33 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * UI state for the Add Expense screen.
+ * UI state for the manual Add Expense screen.
  *
- * @property amountInput Raw string from the amount text field.
- * @property note User-typed expense note.
- * @property selectedCategory Currently selected [Category]; null if unset.
- * @property paymentMethod Selected payment method string.
- * @property isSubmitting True while the save operation is in progress.
- * @property isSaved True once the expense has been saved — triggers navigation back.
- * @property errorMessage Validation or save error message.
+ * @property amountInput     Raw string from the amount text field.
+ * @property merchant        Merchant name typed by the user.
+ * @property selectedCategory Currently selected [ExpenseCategory].
+ * @property account         Account/card identifier (optional free text).
+ * @property notes           Optional note.
+ * @property isSubmitting    True while the Room write is in progress.
+ * @property isSaved         True once the expense has been saved — triggers nav back.
+ * @property errorMessage    Validation or save error message.
  */
 data class AddExpenseUiState(
-    val amountInput: String = "",
-    val note: String = "",
-    val selectedCategory: Category? = null,
-    val paymentMethod: String = "UPI",
-    val isSubmitting: Boolean = false,
-    val isSaved: Boolean = false,
-    val errorMessage: String? = null
+    val amountInput: String              = "",
+    val merchant: String                 = "",
+    val selectedCategory: ExpenseCategory = ExpenseCategory.OTHERS,
+    val account: String                  = "",
+    val notes: String                    = "",
+    val isSubmitting: Boolean            = false,
+    val isSaved: Boolean                 = false,
+    val errorMessage: String?            = null
 )
 
 /**
  * ViewModel for [AddExpenseScreen].
  *
- * Handles form field updates, validation, and submitting the new expense
- * via [AddExpenseUseCase].
+ * Handles form field updates, client-side validation, and persisting the expense
+ * via [AddExpenseUseCase] (offline-first — writes to Room immediately).
  */
 @HiltViewModel
 class AddExpenseViewModel @Inject constructor(
@@ -48,37 +50,52 @@ class AddExpenseViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(AddExpenseUiState())
     val uiState: StateFlow<AddExpenseUiState> = _uiState.asStateFlow()
 
-    fun onAmountChanged(input: String) {
-        _uiState.update { it.copy(amountInput = input) }
-    }
+    // ─────────────────────────────────────────────────────────────────────────
+    // Input event handlers (one per form field)
+    // ─────────────────────────────────────────────────────────────────────────
 
-    fun onNoteChanged(note: String) {
-        _uiState.update { it.copy(note = note) }
-    }
+    fun onAmountChanged(input: String) =
+        _uiState.update { it.copy(amountInput = input, errorMessage = null) }
 
-    fun onCategorySelected(category: Category) {
-        _uiState.update { it.copy(selectedCategory = category) }
-    }
+    fun onMerchantChanged(value: String) =
+        _uiState.update { it.copy(merchant = value) }
 
-    fun onPaymentMethodChanged(method: String) {
-        _uiState.update { it.copy(paymentMethod = method) }
-    }
+    fun onCategorySelected(cat: ExpenseCategory) =
+        _uiState.update { it.copy(selectedCategory = cat) }
+
+    fun onAccountChanged(value: String) =
+        _uiState.update { it.copy(account = value) }
+
+    fun onNotesChanged(value: String) =
+        _uiState.update { it.copy(notes = value) }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Save
+    // ─────────────────────────────────────────────────────────────────────────
 
     fun onSaveExpense() {
         val state = _uiState.value
-        val amountRupees = state.amountInput.toDoubleOrNull()
-        if (amountRupees == null || amountRupees <= 0) {
+
+        // Validate amount
+        val amount = state.amountInput.replace(",", "").toDoubleOrNull()
+        if (amount == null || amount <= 0.0) {
             _uiState.update { it.copy(errorMessage = "Please enter a valid amount.") }
             return
         }
+        if (state.merchant.isBlank()) {
+            _uiState.update { it.copy(errorMessage = "Merchant name is required.") }
+            return
+        }
 
-        val amountPaise = (amountRupees * 100).toLong()
         val expense = Expense(
-            amount = amountPaise,
-            note = state.note.trim(),
-            categoryId = state.selectedCategory?.id,
-            paymentMethod = state.paymentMethod,
-            timestamp = System.currentTimeMillis()
+            amount        = amount,
+            merchant      = state.merchant.trim(),
+            category      = state.selectedCategory.displayName,
+            account       = state.account.trim(),
+            notes         = state.notes.trim().takeIf { it.isNotBlank() },
+            isLogged      = true,             // user manually entered it
+            loggedAt      = System.currentTimeMillis(),
+            transactionAt = System.currentTimeMillis()
         )
 
         viewModelScope.launch {
@@ -93,7 +110,6 @@ class AddExpenseViewModel @Inject constructor(
         }
     }
 
-    fun onErrorDismissed() {
+    fun onErrorDismissed() =
         _uiState.update { it.copy(errorMessage = null) }
-    }
 }

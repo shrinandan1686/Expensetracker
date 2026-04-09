@@ -68,6 +68,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
+    implementation(libs.material)
 
     // Compose BOM - manages all Compose versions
     implementation(platform(libs.androidx.compose.bom))
@@ -113,6 +114,10 @@ dependencies {
     // Accompanist
     implementation(libs.accompanist.permissions)
     implementation(libs.accompanist.systemuicontroller)
+
+    // ShortcutBadger (App Icon Badge)
+    implementation(libs.shortcutbadger)
+    implementation(libs.androidx.datastore.preferences)
 
     // Testing
     testImplementation(libs.junit)

@@ -25,7 +25,7 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
 
-    private const val BASE_URL      = "https://api.trackit.example.com/"
+    private const val BASE_URL      = "http://192.168.1.12:8787/"
     private const val TIMEOUT_SECS  = 30L
 
     @Provides

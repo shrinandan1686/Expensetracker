@@ -33,7 +33,7 @@ interface TrackItApiService {
      * @param page 1-based page number.
      * @param limit Number of records per page (max 100 recommended).
      */
-    @GET("api/v1/expenses")
+    @GET("api/expenses")
     suspend fun getExpenses(
         @Query("page")  page: Int  = 1,
         @Query("limit") limit: Int = 50
