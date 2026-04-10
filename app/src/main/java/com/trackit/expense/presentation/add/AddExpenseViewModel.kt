@@ -1,11 +1,13 @@
 package com.trackit.expense.presentation.add
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.trackit.expense.domain.model.Expense
 import com.trackit.expense.domain.usecase.AddExpenseUseCase
 import com.trackit.expense.overlay.ExpenseCategory
 import dagger.hilt.android.lifecycle.HiltViewModel
+import com.trackit.expense.util.LocationHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,7 +35,10 @@ data class AddExpenseUiState(
     val notes: String                    = "",
     val isSubmitting: Boolean            = false,
     val isSaved: Boolean                 = false,
-    val errorMessage: String?            = null
+    val errorMessage: String?            = null,
+    val latitude: Double?                = null,
+    val longitude: Double?               = null,
+    val locationAddress: String?         = null
 )
 
 /**
@@ -44,11 +49,42 @@ data class AddExpenseUiState(
  */
 @HiltViewModel
 class AddExpenseViewModel @Inject constructor(
-    private val addExpenseUseCase: AddExpenseUseCase
+    private val addExpenseUseCase: AddExpenseUseCase,
+    private val locationHelper: LocationHelper,
+    savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(AddExpenseUiState())
+    private val _uiState = MutableStateFlow(
+        AddExpenseUiState(
+            amountInput = savedStateHandle.get<String>("amount") ?: "",
+            merchant    = savedStateHandle.get<String>("merchant") ?: "",
+            account     = savedStateHandle.get<String>("account")?.let { "XX$it" } ?: ""
+        )
+    )
     val uiState: StateFlow<AddExpenseUiState> = _uiState.asStateFlow()
+
+    init {
+        // Infer category if merchant was pre-filled
+        val prefilledMerch = savedStateHandle.get<String>("merchant")
+        if (!prefilledMerch.isNullOrBlank()) {
+            _uiState.update { it.copy(selectedCategory = ExpenseCategory.inferFrom(prefilledMerch)) }
+        }
+        
+        // Fetch current location
+        fetchLocation()
+    }
+
+    private fun fetchLocation() {
+        viewModelScope.launch {
+            locationHelper.getCurrentLocation()?.let { location ->
+                _uiState.update { it.copy(
+                    latitude = location.latitude,
+                    longitude = location.longitude,
+                    locationAddress = location.address
+                ) }
+            }
+        }
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Input event handlers (one per form field)
@@ -95,7 +131,10 @@ class AddExpenseViewModel @Inject constructor(
             notes         = state.notes.trim().takeIf { it.isNotBlank() },
             isLogged      = true,             // user manually entered it
             loggedAt      = System.currentTimeMillis(),
-            transactionAt = System.currentTimeMillis()
+            transactionAt = System.currentTimeMillis(),
+            latitude      = state.latitude,
+            longitude     = state.longitude,
+            locationAddress = state.locationAddress
         )
 
         viewModelScope.launch {

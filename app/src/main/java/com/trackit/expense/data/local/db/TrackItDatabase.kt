@@ -39,7 +39,7 @@ import com.trackit.expense.data.local.entity.ExpenseEntity
         AccountEntity::class,
         CategoryEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class TrackItDatabase : RoomDatabase() {

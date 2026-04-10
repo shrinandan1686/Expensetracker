@@ -16,7 +16,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.rememberNavController
-import com.trackit.expense.overlay.OverlayPermissionHelper
 import com.trackit.expense.presentation.navigation.NavGraph
 import com.trackit.expense.presentation.navigation.TrackItBottomNav
 import com.trackit.expense.presentation.theme.TrackItTheme
@@ -26,12 +25,6 @@ import androidx.compose.foundation.layout.size
 
 /**
  * Single Activity entry point for TrackIt.
- *
- * ## Overlay Permission
- * On first launch (and whenever [SYSTEM_ALERT_WINDOW] is missing), a rationale
- * [AlertDialog] is shown explaining why the permission is needed. The user can:
- * - Tap "Open Settings" → directed to the system "Display over other apps" screen.
- * - Tap "Not Now" → dismisses the dialog (the app will fall back to silent auto-save).
  *
  * The check is repeated in [onResume] so the UI updates automatically when the user
  * returns from the Settings screen.
@@ -44,6 +37,8 @@ class MainActivity : ComponentActivity() {
 
     @javax.inject.Inject
     lateinit var settingsRepository: com.trackit.expense.domain.repository.SettingsRepository
+
+    private var isCoreFunctional by mutableStateOf(true)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,10 +59,6 @@ class MainActivity : ComponentActivity() {
             ) {
                 val isOnboardingCompleted = remember { preferenceRepository.isOnboardingCompleted() }
                 
-                // Track if core functional permissions (SMS + Overlay) are granted
-                // We don't 'remember' this so it re-checks on every recomposition (triggered by onResume invalidation)
-                val isCoreFunctional = com.trackit.expense.util.PermissionHelper.isCoreFunctional(this)
-
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color    = MaterialTheme.colorScheme.background
@@ -119,7 +110,7 @@ class MainActivity : ComponentActivity() {
                                 )
                                 Spacer(Modifier.height(12.dp))
                                 Text(
-                                    "TrackIt needs SMS and Overlay permissions to function correctly. Please enable them in settings to continue.",
+                                    "TrackIt needs SMS and Notification permissions to function correctly. Please enable them in settings to continue.",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = Color.White.copy(alpha = 0.7f),
                                     textAlign = TextAlign.Center
@@ -148,6 +139,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        window.decorView.invalidate()
+        isCoreFunctional = com.trackit.expense.util.PermissionHelper.isCoreFunctional(this)
+        
+        // Debug logging for troubleshooting
+        if (!isCoreFunctional) {
+            val missing = com.trackit.expense.util.PermissionHelper.runtimePermissions.filter {
+                androidx.core.content.ContextCompat.checkSelfPermission(this, it) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            }
+            android.util.Log.d("MainActivity", "Missing Permissions: ${missing.joinToString()}")
+        }
     }
 }

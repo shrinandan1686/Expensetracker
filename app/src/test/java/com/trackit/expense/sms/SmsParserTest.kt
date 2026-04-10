@@ -273,14 +273,24 @@ class SmsParserTest {
     }
 
     @Test
-    fun `parseTransactionType - unknown when no keyword - SMS_5`() {
-        // SMS_5 has no explicit debit keyword
-        assertEquals("unknown", SmsParser.parseTransactionType(SMS_5))
+    fun `parseTransactionType - txn keyword - SMS_5`() {
+        // SMS_5 has "txn" keyword
+        assertEquals("txn", SmsParser.parseTransactionType(SMS_5))
     }
 
     @Test
     fun `parseTransactionType - purchased keyword`() {
         assertEquals("purchased", SmsParser.parseTransactionType("₹999 purchased on FlipkartPay"))
+    }
+
+    @Test
+    fun `parseTransactionType - sent keyword`() {
+        assertEquals("sent", SmsParser.parseTransactionType("Rs. 100.00 sent to SHRINANDAN via PhonePe"))
+    }
+
+    @Test
+    fun `parseTransactionType - transferred keyword`() {
+        assertEquals("transferred", SmsParser.parseTransactionType("Amt transferred: INR 500 to A/c XX1234"))
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -346,8 +356,49 @@ class SmsParserTest {
         assertEquals("merchant@paytm", result.merchant)
         assertNull(result.accountLast4)
         assertEquals("UPI", result.paymentMode)
+        assertEquals("txn", result.transactionType)
         // SMS_5 has no debit keyword but is parsed due to UPI context
         assertTrue("isUpi should be true", result.isUpi)
+    }
+
+    @Test
+    fun `parse - 'sent to' format is correct`() {
+        val sms = "Rs. 100.00 sent to SHRINANDAN via PhonePe. Ref No: 123456"
+        val result = SmsParser.parse(sms)
+        assertNotNull(result)
+        assertEquals(100.0, result!!.amount, 0.001)
+        assertEquals("SHRINANDAN", result.merchant)
+        assertEquals("PhonePe", result.paymentMode)
+        assertEquals("sent", result.transactionType)
+    }
+
+    @Test
+    fun `parse - 'transferred to' format is correct`() {
+        val sms = "INR 500.00 transferred to John Doe from A/c XX9876"
+        val result = SmsParser.parse(sms)
+        assertNotNull(result)
+        assertEquals(500.0, result!!.amount, 0.001)
+        assertEquals("John Doe", result.merchant)
+        assertEquals("9876", result.accountLast4)
+        assertEquals("transferred", result.transactionType)
+    }
+
+    @Test
+    fun `parse - User HDFC test case`() {
+        val sms = """
+            Sent Rs.1.00
+            From HDFC Bank A/C *7724
+            To Shri Nandan
+            On 10/04/26
+            Ref 646603865440
+            Not You?
+            Call 18002586161/SMS BLOCK UPI to 7308080808
+        """.trimIndent()
+        val result = SmsParser.parse(sms)
+        assertNotNull("Should not be null", result)
+        assertEquals(1.0, result!!.amount, 0.001)
+        assertEquals("Shri Nandan", result.merchant)
+        assertEquals("7724", result.accountLast4)
     }
 
     @Test
@@ -381,8 +432,8 @@ class SmsParserTest {
     @Test
     fun `KNOWN_SENDERS - contains all required bank IDs`() {
         val required = listOf(
-            "HDFCBK", "ICICIB", "SBIINB", "AXISBK", "KOTAKB",
-            "PAYTMB", "YESBNK", "INDBNK", "PNBSMS", "BOIIND"
+            "HDFCBK", "HDFCSMS", "SBISMS", "SBIUPI", "ICICIB", 
+            "AXISBK", "KOTAKB", "PAYTMB", "PHONEP", "GOOGLE"
         )
         required.forEach { sender ->
             assertTrue("$sender must be in KNOWN_SENDERS", sender in SmsReceiver.KNOWN_SENDERS)

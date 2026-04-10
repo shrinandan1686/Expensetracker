@@ -116,7 +116,10 @@ fun ExpenseEntity.toDomain(): Expense = Expense(
     isSynced      = isSynced,
     transactionAt = transactionAt,
     loggedAt      = loggedAt,
-    createdAt     = createdAt
+    createdAt     = createdAt,
+    latitude      = latitude,
+    longitude     = longitude,
+    locationAddress = locationAddress
 )
 
 fun Expense.toEntity(): ExpenseEntity = ExpenseEntity(
@@ -131,5 +134,8 @@ fun Expense.toEntity(): ExpenseEntity = ExpenseEntity(
     isSynced      = isSynced,
     transactionAt = transactionAt,
     loggedAt      = loggedAt,
-    createdAt     = createdAt
+    createdAt     = createdAt,
+    latitude      = latitude,
+    longitude     = longitude,
+    locationAddress = locationAddress
 )

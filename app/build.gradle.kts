@@ -118,6 +118,7 @@ dependencies {
     // ShortcutBadger (App Icon Badge)
     implementation(libs.shortcutbadger)
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.google.play.services.location)
 
     // Testing
     testImplementation(libs.junit)

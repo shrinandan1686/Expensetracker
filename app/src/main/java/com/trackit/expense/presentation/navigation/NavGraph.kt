@@ -11,12 +11,7 @@ import androidx.navigation.navDeepLink
 import com.trackit.expense.presentation.add.AddExpenseScreen
 import com.trackit.expense.presentation.history.HistoryScreen
 import com.trackit.expense.presentation.home.HomeScreen
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.material3.Text
+import com.trackit.expense.presentation.detail.ExpenseDetailScreen
 
 /**
  * Navigation route definitions for TrackIt.
@@ -24,7 +19,16 @@ import androidx.compose.material3.Text
 sealed class Screen(val route: String) {
     data object Onboarding : Screen("onboarding")
     data object Home       : Screen("home")
-    data object AddExpense : Screen("add_expense")
+    data object AddExpense : Screen("add_expense?amount={amount}&merchant={merchant}&account={account}") {
+        const val DEEP_LINK = "trackit://add_expense?amount={amount}&merchant={merchant}&account={account}"
+        fun createRoute(amount: String? = null, merchant: String? = null, account: String? = null): String {
+            val queryParams = mutableListOf<String>()
+            amount?.let { queryParams.add("amount=$it") }
+            merchant?.let { queryParams.add("merchant=$it") }
+            account?.let { queryParams.add("account=$it") }
+            return if (queryParams.isEmpty()) "add_expense" else "add_expense?${queryParams.joinToString("&")}"
+        }
+    }
     data object History    : Screen("history")
     data object Analytics  : Screen("analytics")
     data object UnloggedExpenses : Screen("unlogged_expenses") {
@@ -67,7 +71,17 @@ fun NavGraph(
             )
         }
 
-        composable(Screen.AddExpense.route) {
+        composable(
+            route = Screen.AddExpense.route,
+            arguments = listOf(
+                navArgument("amount") { type = NavType.StringType; nullable = true },
+                navArgument("merchant") { type = NavType.StringType; nullable = true },
+                navArgument("account") { type = NavType.StringType; nullable = true }
+            ),
+            deepLinks = listOf(
+                navDeepLink { uriPattern = Screen.AddExpense.DEEP_LINK }
+            )
+        ) {
             AddExpenseScreen(
                 onNavigateBack = { navController.popBackStack() }
             )
@@ -105,12 +119,10 @@ fun NavGraph(
         composable(
             route     = Screen.ExpenseDetail.route,
             arguments = listOf(navArgument("expenseId") { type = NavType.StringType })
-        ) { backStackEntry ->
-            val id = backStackEntry.arguments?.getString("expenseId") ?: return@composable
-            // Placeholder for detail screen
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Expense Detail: $id", color = Color.White)
-            }
+        ) {
+            ExpenseDetailScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
         }
     }
 }

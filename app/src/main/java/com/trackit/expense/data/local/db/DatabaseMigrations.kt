@@ -132,4 +132,15 @@ object DatabaseMigrations {
             db.execSQL("DROP TABLE IF EXISTS categories")
         }
     }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // v4 → v5 : Added location fields (latitude, longitude, address)
+    // ────────────────────────────────────────────────────────────────────────
+    val MIGRATION_4_5: Migration = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE expenses ADD COLUMN latitude REAL")
+            db.execSQL("ALTER TABLE expenses ADD COLUMN longitude REAL")
+            db.execSQL("ALTER TABLE expenses ADD COLUMN location_address TEXT")
+        }
+    }
 }

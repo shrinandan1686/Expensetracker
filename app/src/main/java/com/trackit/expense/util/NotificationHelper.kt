@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -70,8 +71,13 @@ object NotificationHelper {
     ) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) 
-                != PackageManager.PERMISSION_GRANTED) return
+                != PackageManager.PERMISSION_GRANTED) {
+                Log.e("NotificationHelper", "Permission Denied: Cannot post notification to $channelId. Manifest.permission.POST_NOTIFICATIONS is missing.")
+                return
+            }
         }
+
+        Log.d("NotificationHelper", "Posting notification [id=$notificationId] to channel [$channelId]: $title")
 
         val intent = if (deepLink != null) {
             Intent(Intent.ACTION_VIEW, Uri.parse(deepLink)).apply {

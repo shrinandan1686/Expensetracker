@@ -1,5 +1,6 @@
 package com.trackit.expense.sms
 
+import android.util.Log
 import java.util.regex.Pattern
 
 /**
@@ -68,7 +69,7 @@ object SmsParser {
      *   - "to SBI", "to HDFC", "to your" – bank/filler words
      */
     private val MERCHANT_TO_PATTERN: Pattern = Pattern.compile(
-        """(?<!\w)to\s+(?!(?:UPI|VPA|PhonePe|Google|GPay|Paytm|SBI|HDFC|ICICI|AXIS|KOTAK|YES|PNB|BOI|your|the)\b)([A-Za-z][A-Za-z0-9]*(?:[@._-][A-Za-z0-9]+)*)""",
+        """(?<!\w)to\s+(?!(?:UPI|VPA|PhonePe|Google|GPay|Paytm|SBI|HDFC|ICICI|AXIS|KOTAK|YES|PNB|BOI|your|the)\b)([A-Za-z][A-Za-z0-9&'@._-]*(?:\s+[A-Za-z0-9&'@._-]+){0,2}?)(?=\s+(?:from|on|for|via|using|at|Rs|INR|₹|\d)|[.,\n]|$)""",
         Pattern.CASE_INSENSITIVE
     )
 
@@ -89,7 +90,7 @@ object SmsParser {
     // ─────────────────────────────────────────────────────────────────────────────
 
     private val ACCOUNT_PATTERN: Pattern = Pattern.compile(
-        """(?:[Aa]/[Cc]|[Cc]ard)\s+[Xx]{1,4}(\d{4})"""
+        """(?:[Aa]/[Cc]|[Cc]ard)\s+[Xx*]{1,4}(\d{4})"""
     )
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -100,7 +101,7 @@ object SmsParser {
     // ─────────────────────────────────────────────────────────────────────────────
 
     private val TXN_TYPE_PATTERN: Pattern = Pattern.compile(
-        """\b(debited|paid|spent|purchased?)\b""",
+        """\b(debited|paid|spent|purchased?|sent|transfer(?:red)?|withdraw[nal]*|txn)\b""",
         Pattern.CASE_INSENSITIVE
     )
 
@@ -132,10 +133,16 @@ object SmsParser {
      */
     fun parse(sms: String, timestamp: Long = System.currentTimeMillis()): ParsedTransaction? {
         // Must contain a parseable amount
-        val amount = parseAmount(sms) ?: return null
+        val amount = parseAmount(sms) ?: run {
+            Log.v("SmsParser", "Parse Fail: No amount found in SMS.")
+            return null
+        }
 
         // Must look like a debit (has debit keyword OR UPI/txn indicator)
-        if (!looksLikeDebitSms(sms)) return null
+        if (!looksLikeDebitSms(sms)) {
+            Log.v("SmsParser", "Parse Fail: Amount found ($amount) but message doesn't look like a debit.")
+            return null
+        }
 
         val merchant        = parseMerchant(sms)
         val accountLast4    = parseAccountLast4(sms)
@@ -241,9 +248,16 @@ object SmsParser {
      * which lacks an explicit debit keyword but is clearly a UPI debit.
      */
     private fun looksLikeDebitSms(sms: String): Boolean {
+        // High confidence: contains a debit-indicating verb
         if (TXN_TYPE_PATTERN.matcher(sms).find()) return true
+
+        // Medium confidence: contains payment-context keywords
         val upper = sms.uppercase()
-        return upper.contains("UPI") || upper.contains("VPA") || upper.contains("TXN")
+        return upper.contains("UPI") ||
+               upper.contains("VPA") ||
+               upper.contains("TXN") ||
+               upper.contains("PAID TO") ||
+               upper.contains("SENT TO")
     }
 
     /**

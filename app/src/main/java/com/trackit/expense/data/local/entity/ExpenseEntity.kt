@@ -70,5 +70,14 @@ data class ExpenseEntity(
     val loggedAt: Long? = null,
 
     @ColumnInfo(name = "created_at")
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+
+    @ColumnInfo(name = "latitude")
+    val latitude: Double? = null,
+
+    @ColumnInfo(name = "longitude")
+    val longitude: Double? = null,
+
+    @ColumnInfo(name = "location_address")
+    val locationAddress: String? = null
 )

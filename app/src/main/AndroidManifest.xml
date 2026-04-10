@@ -12,18 +12,15 @@
     <!-- Boot: allows SyncWorker to be re-scheduled after device restart -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <!-- Overlay: draw the expense popup over all apps after UPI payment detection -->
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <!--
-        API 34+: Foreground services need a declared type.
-        "specialUse" covers overlay/windowing services not in other categories.
-    -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- Location permissions -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
 
     <application
         android:name=".TrackItApp"
@@ -42,6 +39,14 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Deep Link Support -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="trackit" />
             </intent-filter>
         </activity>
 
@@ -73,16 +78,6 @@
 
         </receiver>
 
-        <!-- ──────────────── Expense Overlay Service ──────────────── -->
-        <!--
-            android:exported="false" — only started from within this app (SmsReceiver).
-            android:foregroundServiceType="specialUse" — required on API 34+ for services
-            that display content over other apps using TYPE_APPLICATION_OVERLAY.
-        -->
-        <service
-            android:name=".overlay.ExpenseOverlayService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse" />
 
         <!--
             Disable WorkManager's default auto-initializer so that TrackItApp

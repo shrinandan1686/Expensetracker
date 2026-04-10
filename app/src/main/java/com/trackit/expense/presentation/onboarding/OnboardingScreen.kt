@@ -47,7 +47,7 @@ fun OnboardingScreen(
     viewModel: OnboardingViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val pagerState = rememberPagerState(pageCount = { 3 })
+    val pagerState = rememberPagerState(pageCount = { 2 })
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(uiState.isCompleted) {
@@ -66,8 +66,7 @@ fun OnboardingScreen(
         ) { page ->
             when (page) {
                 0 -> PageOneRuntimePermissions()
-                1 -> PageTwoOverlayPermission()
-                2 -> PageThreeBatteryAndBudget(
+                1 -> PageTwoBatteryAndBudget(
                     budgetInput = uiState.budgetInput,
                     onBudgetChanged = viewModel::onBudgetInputChanged,
                     onFinish = viewModel::completeOnboarding,
@@ -91,7 +90,7 @@ fun OnboardingScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                repeat(3) { iteration ->
+                repeat(2) { iteration ->
                     val color = if (pagerState.currentPage == iteration) TrackItPrimary else Color.White.copy(alpha = 0.2f)
                     Box(
                         modifier = Modifier
@@ -103,8 +102,8 @@ fun OnboardingScreen(
                 }
             }
 
-            // Next button (shown on Page 0 and 1)
-            if (pagerState.currentPage < 2) {
+            // Next button (shown on Page 0)
+            if (pagerState.currentPage < 1) {
                 FloatingActionButton(
                     onClick = {
                         scope.launch {
@@ -140,35 +139,7 @@ private fun PageOneRuntimePermissions() {
 }
 
 @Composable
-private fun PageTwoOverlayPermission() {
-    val context = LocalContext.current
-    var hasPermission by remember { mutableStateOf(PermissionHelper.hasOverlayPermission(context)) }
-
-    // Re-check permission when user returns from settings
-    DisposableEffect(Unit) {
-        val observer = { hasPermission = PermissionHelper.hasOverlayPermission(context) }
-        // We check on every resume in MainActivity, but for the button state we rely on manual refresh/re-composition
-        onDispose { }
-    }
-
-    OnboardingPage(
-        title = "Never miss an expense",
-        description = "We show a small, non-intrusive popup over your apps when a payment is detected so you can categorize it on the fly.",
-        icon = Icons.Default.Layers,
-        buttonText = if (hasPermission) "Overlay Allowed" else "Allow Display Over Apps",
-        onButtonClick = {
-            val intent = Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:${context.packageName}")
-            )
-            context.startActivity(intent)
-        },
-        isButtonEnabled = !hasPermission
-    )
-}
-
-@Composable
-private fun PageThreeBatteryAndBudget(
+private fun PageTwoBatteryAndBudget(
     budgetInput: String,
     onBudgetChanged: (String) -> Unit,
     onFinish: () -> Unit,

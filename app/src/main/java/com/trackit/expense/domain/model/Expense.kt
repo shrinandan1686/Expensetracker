@@ -43,7 +43,10 @@ data class Expense(
     val isSynced: Boolean     = false,
     val transactionAt: Long   = System.currentTimeMillis(),
     val loggedAt: Long?       = null,
-    val createdAt: Long       = System.currentTimeMillis()
+    val createdAt: Long       = System.currentTimeMillis(),
+    val latitude: Double?     = null,
+    val longitude: Double?    = null,
+    val locationAddress: String? = null
 ) {
     /** Formatted amount string with ₹ symbol, rounded to 2 decimals. */
     val amountDisplay: String get() = "₹%.2f".format(amount)

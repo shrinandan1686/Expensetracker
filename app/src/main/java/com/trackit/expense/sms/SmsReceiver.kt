@@ -5,18 +5,21 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
 import android.util.Log
+import com.trackit.expense.util.NotificationHelper
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import androidx.work.WorkManager
 import com.trackit.expense.domain.model.Expense
 import com.trackit.expense.domain.usecase.AddExpenseUseCase
 import com.trackit.expense.overlay.ExpenseCategory
-import com.trackit.expense.overlay.ExpenseOverlayService
-import com.trackit.expense.overlay.OverlayPermissionHelper
 import com.trackit.expense.worker.SyncWorker
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import com.trackit.expense.util.LocationHelper
+import com.trackit.expense.BuildConfig
 import javax.inject.Inject
 
 /**
@@ -44,6 +47,9 @@ class SmsReceiver : BroadcastReceiver() {
     @Inject
     lateinit var addExpenseUseCase: AddExpenseUseCase
 
+    @Inject
+    lateinit var locationHelper: LocationHelper
+
     /**
      * Private coroutine scope tied to [SupervisorJob] so individual child failures
      * don't cancel sibling operations (e.g., if two SMSs arrive together).
@@ -69,20 +75,27 @@ class SmsReceiver : BroadcastReceiver() {
         val grouped = messages.groupBy { it.originatingAddress }
 
         for ((sender, parts) in grouped) {
-            // Skip if sender is not a known bank/UPI ID
-            if (!isKnownBankSender(sender)) continue
-
             // Concatenate multi-part messages into a single body
             val body = parts.joinToString(separator = "") { it.messageBody }
             val timestamp = parts.firstOrNull()?.timestampMillis ?: System.currentTimeMillis()
 
-            Log.d(TAG, "Bank SMS from [$sender]: $body")
+            Log.v(TAG, "Incoming SMS from [$sender]: $body")
+
+            // Skip if sender is not a known bank/UPI ID (Bypass allowed in DEBUG)
+            if (!isKnownBankSender(sender)) {
+                if (BuildConfig.DEBUG) {
+                    Log.d(TAG, "DEBUG: Allowing unknown sender [$sender] for testing purposes.")
+                } else {
+                    Log.d(TAG, "Skipping unknown sender [$sender]. Use a known bank ID (e.g., HDFCSMS) for testing.")
+                    continue
+                }
+            }
 
             val pendingResult = goAsync()
 
             receiverScope.launch {
                 try {
-                    processSmS(context, body, timestamp)
+                    processSmS(context, sender!!, body, timestamp)
                 } catch (e: Exception) {
                     Log.e(TAG, "Error processing SMS from $sender", e)
                 } finally {
@@ -99,43 +112,67 @@ class SmsReceiver : BroadcastReceiver() {
      * The fallback saves with [Expense.isLogged] = false so the user can find and
      * review it later in History → Skipped.
      */
-    private fun processSmS(context: Context, body: String, timestamp: Long) {
-        val parsed = SmsParser.parse(body, timestamp) ?: run {
-            Log.d(TAG, "SMS did not match any payment pattern, skipping.")
-            return
-        }
-
-        if (OverlayPermissionHelper.hasOverlayPermission(context)) {
-            // ── Happy path: show the expense entry popup ──────────────────────
-            Log.i(TAG, "Overlay permission granted — starting ExpenseOverlayService")
-            val intent = ExpenseOverlayService.createIntent(context, parsed)
-            context.startForegroundService(intent)
-        } else {
-            // ── Fallback: silently save as unreviewed ─────────────────────────
-            Log.w(TAG, "No overlay permission — falling back to silent auto-save")
-            receiverScope.launch {
-                val expense = Expense(
-                    amount        = parsed.amount,         // Double INR
-                    merchant      = parsed.merchant ?: "",
-                    category      = ExpenseCategory.inferFrom(parsed.merchant).displayName,
-                    account       = parsed.accountLast4?.let { "XX$it" } ?: "",
-                    notes         = parsed.paymentMode
-                                        .takeIf { it.isNotBlank() && it != "Unknown" }
-                                        ?.let { "via $it" },
-                    rawSms        = body,
-                    isLogged      = false,
-                    isSynced      = false,
-                    transactionAt = parsed.timestamp
-                )
-                addExpenseUseCase(expense)
-                    .onSuccess { id ->
-                        Log.i(TAG, "Silent auto-save: id=$id ₹${parsed.amount} ${parsed.merchant}")
-                    }
-                    .onFailure { e ->
-                        Log.e(TAG, "Failed to auto-save expense", e)
-                    }
+    private fun processSmS(context: Context, sender: String, body: String, timestamp: Long) {
+        receiverScope.launch {
+            val location = try {
+                locationHelper.getCurrentLocation()
+            } catch (e: Exception) {
+                null
             }
+            
+            val parsed = SmsParser.parse(body, timestamp) ?: run {
+                Log.w(TAG, "REJECTED: SMS content from $sender did not match any debt/payment patterns.")
+                return@launch
+            }
+
+            Log.i(TAG, "Detection Result: Amt=${parsed.amount}, Merch=${parsed.merchant}")
+
+            // 1. Silent save as a backup (unreviewed)
+            val expense = Expense(
+                amount        = parsed.amount,
+                merchant      = parsed.merchant ?: "",
+                category      = ExpenseCategory.inferFrom(parsed.merchant).displayName,
+                account       = parsed.accountLast4?.let { "XX$it" } ?: "",
+                notes         = parsed.paymentMode
+                                    .takeIf { it.isNotBlank() && it != "Unknown" }
+                                    ?.let { "via $it" },
+                rawSms        = body,
+                isLogged      = false,
+                isSynced      = false,
+                transactionAt = parsed.timestamp,
+                latitude      = location?.latitude,
+                longitude     = location?.longitude,
+                locationAddress = location?.address
+            )
+            
+            addExpenseUseCase(expense)
+                .onSuccess { id ->
+                    Log.i(TAG, "Backup auto-save: id=$id ₹${parsed.amount} ${parsed.merchant}")
+                }
+                .onFailure { e ->
+                    Log.e(TAG, "Failed to auto-save expense backup", e)
+                }
+            
+            // 2. Post notification
+            postNotification(context, parsed)
         }
+    }
+
+    private fun postNotification(context: Context, parsed: ParsedTransaction) {
+        val encodedMerch = URLEncoder.encode(parsed.merchant ?: "", StandardCharsets.UTF_8.toString())
+        val deepLink = "trackit://add_expense?" +
+            "amount=${parsed.amount}" +
+            "&merchant=$encodedMerch" +
+            "&account=${parsed.accountLast4 ?: ""}"
+
+        NotificationHelper.showNotification(
+            context = context,
+            channelId = NotificationHelper.CHANNEL_EXPENSE_ENTRY,
+            notificationId = System.currentTimeMillis().toInt(),
+            title = "Payment Detected: ₹${parsed.amount}",
+            message = "Tap to log expense at ${parsed.merchant ?: "Unknown Merchant"}",
+            deepLink = deepLink
+        )
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -166,7 +203,12 @@ class SmsReceiver : BroadcastReceiver() {
         val normalized = sender.uppercase()
             .replace(Regex("^[A-Z]{2}-"), "")
             .trim()
-        return normalized in KNOWN_SENDERS
+        
+        val isKnown = normalized in KNOWN_SENDERS
+        if (!isKnown) {
+            Log.i(TAG, "Unknown sender: $sender (normalized: $normalized)")
+        }
+        return isKnown
     }
 
     companion object {
@@ -190,16 +232,30 @@ class SmsReceiver : BroadcastReceiver() {
          * Extend this set as new banks/wallets are onboarded.
          */
         val KNOWN_SENDERS: Set<String> = setOf(
-            "HDFCBK",
-            "ICICIB",
-            "SBIINB",
-            "AXISBK",
-            "KOTAKB",
-            "PAYTMB",
-            "YESBNK",
-            "INDBNK",
-            "PNBSMS",
-            "BOIIND"
+            // Banks
+            "HDFCBK", "HDFCSMS", "HDFCBNK", "HDFCBK-T",
+            "ICICIB", "ICICIP", "ICICIBANK",
+            "SBIINB", "SBISMS", "SBIUPI", "SBIPAY", "SBICRD",
+            "AXISBK", "AXISBN", "AXISPAY",
+            "KOTAKB", "KOTAKM",
+            "YESBNK", "YESBCAS",
+            "INDBNK", "IDFCBK", "IDFCFB",
+            "PNBSMS", "PNBBNK",
+            "BOIIND", "BOISMS",
+            "CANBK", "CNRBK",
+            "UNIONB", "UBISMS",
+            "BARBKG", "BOBSMS",
+            "CENBNK", "CBIIND",
+            "IDBIBK", "IDBINS",
+            "RBLBNK", "FEDERAL",
+            "UCOBNK", "INDIAB",
+            "MAHABK", "SYNDBK",
+            // UPI Gateways / Apps
+            "PHONEP", "PAYTMB", "PAYTM",
+            "GPAY", "GOOGLE", "GSPAY",
+            "AMAZON", "AMZNPAY",
+            "NXGSPY", "BHIMUP",
+            "PHNPAY", "CREDIT"
         )
     }
 }

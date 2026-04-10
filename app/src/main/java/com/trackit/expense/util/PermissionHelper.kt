@@ -20,6 +20,8 @@ object PermissionHelper {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             add(Manifest.permission.POST_NOTIFICATIONS)
         }
+        add(Manifest.permission.ACCESS_COARSE_LOCATION)
+        add(Manifest.permission.ACCESS_FINE_LOCATION)
     }
 
     /** Returns true if all [runtimePermissions] are granted. */
@@ -29,10 +31,6 @@ object PermissionHelper {
         }
     }
 
-    /** Returns true if the device allows the app to draw overlays over other apps. */
-    fun hasOverlayPermission(context: Context): Boolean {
-        return Settings.canDrawOverlays(context)
-    }
 
     /** Returns true if the app is excluded from battery optimization. */
     fun isIgnoringBatteryOptimizations(context: Context): Boolean {
@@ -40,10 +38,8 @@ object PermissionHelper {
         return pm.isIgnoringBatteryOptimizations(context.packageName)
     }
 
-    /** Returns true if THE CORE APP IS FUNCTIONAL (SMS + Overlay). */
+    /** Returns true if THE CORE APP IS FUNCTIONAL (SMS + Notifications). */
     fun isCoreFunctional(context: Context): Boolean {
-        // Battery optimization is recommended but not strictly "blocking" for the overlay to appear
-        // however for long-term stability it's best to include it in the core check.
-        return hasRuntimePermissions(context) && hasOverlayPermission(context)
+        return hasRuntimePermissions(context)
     }
 }
