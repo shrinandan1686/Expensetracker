@@ -19,13 +19,14 @@ import com.trackit.expense.presentation.detail.ExpenseDetailScreen
 sealed class Screen(val route: String) {
     data object Onboarding : Screen("onboarding")
     data object Home       : Screen("home")
-    data object AddExpense : Screen("add_expense?amount={amount}&merchant={merchant}&account={account}") {
-        const val DEEP_LINK = "trackit://add_expense?amount={amount}&merchant={merchant}&account={account}"
-        fun createRoute(amount: String? = null, merchant: String? = null, account: String? = null): String {
+    data object AddExpense : Screen("add_expense?amount={amount}&merchant={merchant}&account={account}&expenseId={expenseId}") {
+        const val DEEP_LINK = "trackit://add_expense?amount={amount}&merchant={merchant}&account={account}&expenseId={expenseId}"
+        fun createRoute(amount: String? = null, merchant: String? = null, account: String? = null, expenseId: String? = null): String {
             val queryParams = mutableListOf<String>()
             amount?.let { queryParams.add("amount=$it") }
             merchant?.let { queryParams.add("merchant=$it") }
             account?.let { queryParams.add("account=$it") }
+            expenseId?.let { queryParams.add("expenseId=$it") }
             return if (queryParams.isEmpty()) "add_expense" else "add_expense?${queryParams.joinToString("&")}"
         }
     }
@@ -76,7 +77,8 @@ fun NavGraph(
             arguments = listOf(
                 navArgument("amount") { type = NavType.StringType; nullable = true },
                 navArgument("merchant") { type = NavType.StringType; nullable = true },
-                navArgument("account") { type = NavType.StringType; nullable = true }
+                navArgument("account") { type = NavType.StringType; nullable = true },
+                navArgument("expenseId") { type = NavType.StringType; nullable = true }
             ),
             deepLinks = listOf(
                 navDeepLink { uriPattern = Screen.AddExpense.DEEP_LINK }

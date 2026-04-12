@@ -154,16 +154,17 @@ class SmsReceiver : BroadcastReceiver() {
                 }
             
             // 2. Post notification
-            postNotification(context, parsed)
+            postNotification(context, parsed, expense.id)
         }
     }
 
-    private fun postNotification(context: Context, parsed: ParsedTransaction) {
+    private fun postNotification(context: Context, parsed: ParsedTransaction, expenseId: String) {
         val encodedMerch = URLEncoder.encode(parsed.merchant ?: "", StandardCharsets.UTF_8.toString())
         val deepLink = "trackit://add_expense?" +
             "amount=${parsed.amount}" +
             "&merchant=$encodedMerch" +
-            "&account=${parsed.accountLast4 ?: ""}"
+            "&account=${parsed.accountLast4 ?: ""}" +
+            "&expenseId=$expenseId"
 
         NotificationHelper.showNotification(
             context = context,

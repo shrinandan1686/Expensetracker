@@ -11,9 +11,11 @@ import com.trackit.expense.util.LocationHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.trackit.expense.domain.usecase.GetExpenseByIdUseCase
 
 /**
  * UI state for the manual Add Expense screen.
@@ -28,6 +30,7 @@ import javax.inject.Inject
  * @property errorMessage    Validation or save error message.
  */
 data class AddExpenseUiState(
+    val expenseId: String?               = null,
     val amountInput: String              = "",
     val merchant: String                 = "",
     val selectedCategory: ExpenseCategory = ExpenseCategory.OTHERS,
@@ -38,7 +41,10 @@ data class AddExpenseUiState(
     val errorMessage: String?            = null,
     val latitude: Double?                = null,
     val longitude: Double?               = null,
-    val locationAddress: String?         = null
+    val locationAddress: String?         = null,
+    val transactionAt: Long?             = null,
+    val createdAt: Long?                 = null,
+    val rawSms: String                   = ""
 )
 
 /**
@@ -50,6 +56,7 @@ data class AddExpenseUiState(
 @HiltViewModel
 class AddExpenseViewModel @Inject constructor(
     private val addExpenseUseCase: AddExpenseUseCase,
+    private val getExpenseByIdUseCase: GetExpenseByIdUseCase,
     private val locationHelper: LocationHelper,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
@@ -70,8 +77,36 @@ class AddExpenseViewModel @Inject constructor(
             _uiState.update { it.copy(selectedCategory = ExpenseCategory.inferFrom(prefilledMerch)) }
         }
         
-        // Fetch current location
-        fetchLocation()
+        val expenseId = savedStateHandle.get<String>("expenseId")
+        if (expenseId != null) {
+            viewModelScope.launch {
+                getExpenseByIdUseCase(expenseId).firstOrNull()?.let { existingExpense ->
+                    _uiState.update { it.copy(
+                        expenseId = existingExpense.id,
+                        amountInput = if (existingExpense.amount > 0) existingExpense.amount.toString() else it.amountInput,
+                        merchant = existingExpense.merchant.ifBlank { it.merchant },
+                        account = existingExpense.account.ifBlank { it.account },
+                        selectedCategory = ExpenseCategory.inferFrom(existingExpense.category),
+                        notes = existingExpense.notes ?: "",
+                        latitude = existingExpense.latitude,
+                        longitude = existingExpense.longitude,
+                        locationAddress = existingExpense.locationAddress,
+                        transactionAt = existingExpense.transactionAt,
+                        createdAt = existingExpense.createdAt,
+                        rawSms = existingExpense.rawSms
+                    ) }
+                    
+                    // Fallback: If background SmsReceiver couldn't get the location (due to permission limits), 
+                    // fetch it now while the app is in the foreground
+                    if (existingExpense.latitude == null) {
+                        fetchLocation()
+                    }
+                }
+            }
+        } else {
+            // Fetch current location
+            fetchLocation()
+        }
     }
 
     private fun fetchLocation() {
@@ -124,14 +159,17 @@ class AddExpenseViewModel @Inject constructor(
         }
 
         val expense = Expense(
+            id            = state.expenseId ?: java.util.UUID.randomUUID().toString(),
             amount        = amount,
             merchant      = state.merchant.trim(),
             category      = state.selectedCategory.displayName,
             account       = state.account.trim(),
             notes         = state.notes.trim().takeIf { it.isNotBlank() },
+            rawSms        = state.rawSms,
             isLogged      = true,             // user manually entered it
             loggedAt      = System.currentTimeMillis(),
-            transactionAt = System.currentTimeMillis(),
+            transactionAt = state.transactionAt ?: System.currentTimeMillis(),
+            createdAt     = state.createdAt ?: System.currentTimeMillis(),
             latitude      = state.latitude,
             longitude     = state.longitude,
             locationAddress = state.locationAddress

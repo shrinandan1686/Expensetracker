@@ -151,7 +151,7 @@ private fun DetailContent(expense: Expense) {
             items = listOf(
                 InfoItem("Merchant", expense.merchant, Icons.Outlined.Store),
                 InfoItem("Account", expense.account.ifBlank { "Unknown" }, Icons.Outlined.AccountBalance),
-                InfoItem("Date", expense.transactionAt.toString(), Icons.Outlined.Event)
+                InfoItem("Date", java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(expense.transactionAt)), Icons.Outlined.Event)
             )
         )
 
