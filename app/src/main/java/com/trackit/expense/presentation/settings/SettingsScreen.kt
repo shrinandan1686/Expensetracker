@@ -1,5 +1,10 @@
 package com.trackit.expense.presentation.settings
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -23,29 +28,71 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.trackit.expense.BuildConfig
 import com.trackit.expense.data.local.entity.AccountEntity
 import com.trackit.expense.data.local.entity.AccountType
 import com.trackit.expense.data.local.entity.CategoryEntity
 import com.trackit.expense.domain.repository.ThemeMode
+import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
+    onNavigateToReview: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState       by viewModel.uiState.collectAsState()
     val exportMessage by viewModel.exportMessage.collectAsState()
+    val shareUri      by viewModel.shareUri.collectAsState()
+    val importState   by viewModel.importState.collectAsState()
+    val context       = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
-    
-    var showAddAccountSheet by remember { mutableStateOf(false) }
+
+    var showAddAccountSheet  by remember { mutableStateOf(false) }
     var showAddCategorySheet by remember { mutableStateOf(false) }
+    var showImportDialog     by remember { mutableStateOf(false) }
+
+    // Runtime READ_SMS permission
+    var hasSmsPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS)
+                == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val smsPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> hasSmsPermission = granted }
+
+    // Share sheet for CSV export
+    val shareLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { viewModel.clearShareUri() }
+
+    LaunchedEffect(shareUri) {
+        shareUri?.let { uri ->
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/csv"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            shareLauncher.launch(Intent.createChooser(intent, "Share expenses CSV"))
+        }
+    }
 
     LaunchedEffect(exportMessage) {
         exportMessage?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.clearExportMessage()
+        }
+    }
+
+    // Show error snackbar if import fails
+    LaunchedEffect(importState) {
+        if (importState is ImportState.Error) {
+            snackbarHostState.showSnackbar((importState as ImportState.Error).message)
+            viewModel.clearImportState()
         }
     }
 
@@ -198,6 +245,77 @@ fun SettingsScreen(
                 }
             }
 
+            // ── SMS IMPORT SECTION ───────────────────────────────────────────
+            item {
+                SettingsSection(title = "DATA IMPORT") {
+                    when (val state = importState) {
+                        is ImportState.Loading -> {
+                            Column(Modifier.padding(16.dp)) {
+                                val pct = if (state.total > 0)
+                                    state.read.toFloat() / state.total else 0f
+                                Text(
+                                    "Reading messages… ${state.read} / ${state.total}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                LinearProgressIndicator(
+                                    progress = { pct },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                        is ImportState.Done -> {
+                            Column(Modifier.padding(16.dp)) {
+                                Text(
+                                    "✓ Import complete — ${state.imported} new expense${if (state.imported != 1) "s" else ""} added (${state.skipped} skipped)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                if (state.imported > 0) {
+                                    Spacer(Modifier.height(12.dp))
+                                    Button(
+                                        onClick = {
+                                            viewModel.clearImportState()
+                                            onNavigateToReview()
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(Icons.Default.RateReview, null, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Review & Categorise Now")
+                                    }
+                                } else {
+                                    Spacer(Modifier.height(8.dp))
+                                    TextButton(onClick = { viewModel.clearImportState() }) {
+                                        Text("Dismiss")
+                                    }
+                                }
+                            }
+                        }
+                        else -> {
+                            if (hasSmsPermission) {
+                                SettingsClickItem(
+                                    title    = "Import from SMS",
+                                    subtitle = "Scan past bank messages and add missing expenses",
+                                    icon     = Icons.Default.Sms,
+                                    onClick  = { showImportDialog = true }
+                                )
+                            } else {
+                                SettingsClickItem(
+                                    title    = "Grant SMS Permission",
+                                    subtitle = "Required to read bank messages",
+                                    icon     = Icons.Default.Sms,
+                                    onClick  = {
+                                        smsPermissionLauncher.launch(Manifest.permission.READ_SMS)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // ── ABOUT SECTION ───────────────────────────────────────────────
             item {
                 SettingsSection(title = "ABOUT") {
@@ -244,6 +362,93 @@ fun SettingsScreen(
             }
         )
     }
+
+    if (showImportDialog) {
+        ImportPeriodDialog(
+            onDismiss = { showImportDialog = false },
+            onConfirm = { fromMillis ->
+                showImportDialog = false
+                viewModel.startImport(fromMillis)
+            }
+        )
+    }
+}
+
+@Composable
+fun ImportPeriodDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (fromMillis: Long) -> Unit
+) {
+    val periods = listOf(
+        "Last 1 month"  to 1,
+        "Last 3 months" to 3,
+        "Last 6 months" to 6,
+        "Last 1 year"   to 12
+    )
+    var selectedIndex by remember { mutableStateOf(1) } // default: 3 months
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("Import from SMS", fontWeight = FontWeight.Bold)
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Choose how far back to scan your bank messages. Only new expenses not already in the app will be added.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                periods.forEachIndexed { index, (label, _) ->
+                    val isSelected = index == selectedIndex
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                if (isSelected)
+                                    MaterialTheme.colorScheme.primaryContainer
+                                else
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                            )
+                            .clickable { selectedIndex = index }
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = isSelected,
+                            onClick  = { selectedIndex = index },
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            label,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (isSelected)
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            else
+                                MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val months = periods[selectedIndex].second
+                    val cal = Calendar.getInstance().apply { add(Calendar.MONTH, -months) }
+                    onConfirm(cal.timeInMillis)
+                }
+            ) {
+                Text("Start Import")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 @Composable

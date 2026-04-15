@@ -2,6 +2,7 @@ package com.trackit.expense.presentation.history
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -29,6 +31,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -157,10 +161,11 @@ fun UnloggedExpensesScreen(
 
             items(uiState.expenses, key = { it.id }) { expense ->
                 UnloggedExpenseItem(
-                    expense = expense,
-                    onLog = { viewModel.onLogExpense(expense) },
-                    onIgnore = { viewModel.onIgnoreExpense(expense) },
-                    onClick = { onExpenseClick(expense.id) }
+                    expense          = expense,
+                    onLog            = { viewModel.onLogExpense(expense) },
+                    onIgnore         = { viewModel.onIgnoreExpense(expense) },
+                    onClick          = { onExpenseClick(expense.id) },
+                    onCategoryChange = { newCategory -> viewModel.updateCategory(expense, newCategory) }
                 )
             }
         }
@@ -172,13 +177,14 @@ private fun UnloggedExpenseItem(
     expense: Expense,
     onLog: () -> Unit,
     onIgnore: () -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onCategoryChange: (String) -> Unit
 ) {
     val dateStr = remember(expense.transactionAt) {
         SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault())
             .format(Date(expense.transactionAt))
     }
-    val category = remember(expense.category) {
+    val selectedCategory = remember(expense.category) {
         ExpenseCategory.entries.find { it.displayName == expense.category } ?: ExpenseCategory.OTHERS
     }
 
@@ -189,8 +195,11 @@ private fun UnloggedExpenseItem(
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
         Column(Modifier.padding(16.dp)) {
+            // ── Header row: emoji / merchant / amount ─────────────────────────
             Row(
-                modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onClick),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
@@ -200,7 +209,7 @@ private fun UnloggedExpenseItem(
                         .background(DarkSurfaceVariant),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(category.emoji, fontSize = 20.sp)
+                    Text(selectedCategory.emoji, fontSize = 20.sp)
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
@@ -224,8 +233,40 @@ private fun UnloggedExpenseItem(
                 )
             }
 
-            Spacer(Modifier.height(16.dp))
-            
+            Spacer(Modifier.height(12.dp))
+
+            // ── Category chips ────────────────────────────────────────────────
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                ExpenseCategory.entries.forEach { cat ->
+                    val isSelected = cat == selectedCategory
+                    FilterChip(
+                        selected = isSelected,
+                        onClick  = { if (!isSelected) onCategoryChange(cat.displayName) },
+                        label    = { Text("${cat.emoji} ${cat.displayName}", fontSize = 11.sp) },
+                        colors   = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor    = TrackItPrimary,
+                            selectedLabelColor        = Color.White,
+                            containerColor            = DarkSurfaceVariant,
+                            labelColor                = Color.White.copy(alpha = 0.6f)
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled          = true,
+                            selected         = isSelected,
+                            borderColor      = Color.White.copy(alpha = 0.1f),
+                            selectedBorderColor = TrackItPrimary
+                        )
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // ── Action buttons ────────────────────────────────────────────────
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)

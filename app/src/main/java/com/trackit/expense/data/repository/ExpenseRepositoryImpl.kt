@@ -1,9 +1,11 @@
 package com.trackit.expense.data.repository
 
+import com.trackit.expense.data.local.dao.DailyTotal
 import com.trackit.expense.data.local.dao.ExpenseDao
 import com.trackit.expense.data.local.entity.ExpenseEntity
 import com.trackit.expense.domain.model.Expense
 import com.trackit.expense.domain.repository.ExpenseRepository
+import com.trackit.expense.widget.WidgetRefreshWorker
 import com.trackit.expense.worker.SyncWorker
 import androidx.work.WorkManager
 import kotlinx.coroutines.flow.Flow
@@ -60,6 +62,12 @@ class ExpenseRepositoryImpl @Inject constructor(
     override fun getCategoryTotalsByMonth(month: String): Flow<List<com.trackit.expense.data.local.dao.CategoryTotal>> =
         expenseDao.getTotalByCategoryForMonth(month)
 
+    override suspend fun getTotalByMonthOnce(month: String): Double =
+        expenseDao.getTotalByMonthOneShot(month)
+
+    override suspend fun getDailyTotalsForMonth(month: String): List<DailyTotal> =
+        expenseDao.getDailyTotalsForMonth(month)
+
     // ─────────────────────────────────────────────────────────────────────────
     // Writes — Room first, then enqueue sync
     // ─────────────────────────────────────────────────────────────────────────
@@ -67,12 +75,14 @@ class ExpenseRepositoryImpl @Inject constructor(
     override suspend fun save(expense: Expense): Result<String> = runCatching {
         expenseDao.insert(expense.toEntity())
         enqueueSyncWork()
+        WidgetRefreshWorker.enqueueNow(workManager)
         expense.id
     }
 
     override suspend fun update(expense: Expense): Result<Unit> = runCatching {
         expenseDao.update(expense.toEntity())
         enqueueSyncWork()
+        WidgetRefreshWorker.enqueueNow(workManager)
     }
 
     override suspend fun delete(id: String): Result<Unit> = runCatching {

@@ -2,6 +2,7 @@ package com.trackit.expense.presentation.add
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,8 +23,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -55,6 +58,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.trackit.expense.overlay.ExpenseCategory
+import com.trackit.expense.presentation.theme.BudgetError
 import com.trackit.expense.presentation.theme.DarkBackground
 import com.trackit.expense.presentation.theme.DarkSurface
 import com.trackit.expense.presentation.theme.DarkSurfaceVariant
@@ -106,6 +110,15 @@ fun AddExpenseScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Spacer(Modifier.height(4.dp))
+
+            // ── Duplicate Warning ─────────────────────────────────────────────
+            AnimatedVisibility(visible = uiState.showDuplicateWarning) {
+                DuplicateWarningCard(
+                    onSaveAnyway = viewModel::onDismissDuplicateWarning,
+                    onDiscard    = viewModel::onDiscardDuplicate,
+                    modifier     = Modifier.padding(bottom = 4.dp)
+                )
+            }
 
             // ── Amount ────────────────────────────────────────────────────────
             SectionLabel("Amount (₹)")
@@ -229,6 +242,72 @@ fun AddExpenseScreen(
             }
 
             Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Duplicate Warning Card
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun DuplicateWarningCard(
+    onSaveAnyway: () -> Unit,
+    onDiscard:    () -> Unit,
+    modifier:     Modifier = Modifier
+) {
+    androidx.compose.material3.Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .border(1.dp, BudgetError.copy(alpha = 0.5f), androidx.compose.foundation.shape.RoundedCornerShape(12.dp)),
+        shape    = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        colors   = androidx.compose.material3.CardDefaults.cardColors(
+            containerColor = BudgetError.copy(alpha = 0.10f)
+        )
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector        = Icons.Filled.Warning,
+                    contentDescription = null,
+                    tint               = BudgetError,
+                    modifier           = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Possible Duplicate",
+                    color      = BudgetError,
+                    fontWeight = FontWeight.Bold,
+                    fontSize   = 14.sp
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "A similar transaction was detected within the last minute. " +
+                "You can save this as a new expense, or discard it if it's a duplicate.",
+                color = Color.White.copy(alpha = 0.75f),
+                style = MaterialTheme.typography.bodySmall
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = onDiscard,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = BudgetError),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BudgetError)
+                ) {
+                    Text("Discard", fontSize = 13.sp)
+                }
+                Button(
+                    onClick  = onSaveAnyway,
+                    modifier = Modifier.weight(1f),
+                    shape    = RoundedCornerShape(8.dp),
+                    colors   = ButtonDefaults.buttonColors(containerColor = TrackItPrimary)
+                ) {
+                    Text("Save Anyway", fontSize = 13.sp)
+                }
+            }
         }
     }
 }

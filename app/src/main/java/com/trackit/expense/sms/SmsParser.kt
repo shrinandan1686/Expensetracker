@@ -26,12 +26,22 @@ object SmsParser {
     // ─────────────────────────────────────────────────────────────────────────────
     // AMOUNT PATTERNS
     //
-    // Matches: ₹450  |  Rs.1,200  |  Rs 500  |  INR 450.00
-    // Group 1 = the numeric part (may include commas)
+    // Matches ALL of the following (CASE_INSENSITIVE covers rs/Rs/RS/rS):
+    //   ₹450          ₹1,00,000 (Indian lakh)   ₹1,000.00
+    //   Rs.1,200       Rs 500    RS 500           Rs.500
+    //   INR 450.00     INR1000   INR 1,000.00     inr 250
+    //
+    // Breakdown:
+    //   (?:₹|[Rr][Ss]\.?\s*|INR\s*)  – currency prefix; \s* inside prefix handles
+    //                                   "Rs. 500" (space after dot) AND "RS500"
+    //   [\d,]+                         – integer part with optional commas (lakh ok)
+    //   (?:\.\d{1,2})?                 – optional decimal (paise)
+    //
+    // Group 1 = the raw numeric string (may contain commas — stripped before parse).
     // ─────────────────────────────────────────────────────────────────────────────
 
     private val AMOUNT_PATTERN: Pattern = Pattern.compile(
-        """(?:₹|[Rr][Ss]\.?|INR)\s*([\d,]+(?:\.\d{1,2})?)""",
+        """(?:₹|(?:[Rr][Ss]\.?\s*)|(?:INR\s*))([\d,]+(?:\.\d{1,2})?)""",
         Pattern.CASE_INSENSITIVE
     )
 

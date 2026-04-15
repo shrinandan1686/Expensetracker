@@ -72,6 +72,7 @@ class TrackItApp : Application(), Configuration.Provider {
         com.trackit.expense.worker.BudgetAlertWorker.enqueueDaily(workManager)
         com.trackit.expense.worker.UnloggedReminderWorker.enqueuePeriodic(workManager)
         com.trackit.expense.worker.WeeklySummaryWorker.enqueueWeekly(workManager)
+        com.trackit.expense.widget.WidgetRefreshWorker.enqueuePeriodic(workManager)
 
         // 3. Real-time Badge Update (Observe unlogged expenses)
         applicationScope.launch {

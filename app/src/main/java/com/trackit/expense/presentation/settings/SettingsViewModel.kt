@@ -1,5 +1,6 @@
 package com.trackit.expense.presentation.settings
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.trackit.expense.data.local.dao.AccountDao
@@ -9,11 +10,19 @@ import com.trackit.expense.data.local.entity.AccountType
 import com.trackit.expense.data.local.entity.CategoryEntity
 import com.trackit.expense.domain.repository.SettingsRepository
 import com.trackit.expense.domain.repository.ThemeMode
+import com.trackit.expense.domain.usecase.BulkSmsImportUseCase
 import com.trackit.expense.domain.usecase.ExportDataUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+sealed class ImportState {
+    object Idle    : ImportState()
+    data class Loading(val read: Int, val total: Int) : ImportState()
+    data class Done(val imported: Int, val skipped: Int) : ImportState()
+    data class Error(val message: String) : ImportState()
+}
 
 data class SettingsUiState(
     val accounts: List<AccountEntity> = emptyList(),
@@ -32,7 +41,8 @@ class SettingsViewModel @Inject constructor(
     private val accountDao: AccountDao,
     private val categoryDao: CategoryDao,
     private val settingsRepository: SettingsRepository,
-    private val exportDataUseCase: ExportDataUseCase
+    private val exportDataUseCase: ExportDataUseCase,
+    private val bulkSmsImportUseCase: BulkSmsImportUseCase
 ) : ViewModel() {
 
     val uiState: StateFlow<SettingsUiState> = combine(
@@ -72,6 +82,11 @@ class SettingsViewModel @Inject constructor(
 
     private val _exportMessage = MutableStateFlow<String?>(null)
     val exportMessage = _exportMessage.asStateFlow()
+
+    private val _shareUri = MutableStateFlow<Uri?>(null)
+    val shareUri = _shareUri.asStateFlow()
+
+    fun clearShareUri() { _shareUri.value = null }
 
     fun addAccount(name: String, last4: String, type: AccountType, colorHex: String) {
         viewModelScope.launch {
@@ -133,17 +148,39 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setDynamicColorEnabled(enabled) }
     }
 
-    fun exportData() {
+    fun exportData(month: String? = null) {
         viewModelScope.launch {
-            exportDataUseCase().onSuccess {
-                _exportMessage.value = it
-            }.onFailure {
-                _exportMessage.value = "Export failed: ${it.message}"
+            exportDataUseCase(month).onSuccess { uri ->
+                _shareUri.value = uri
+            }.onFailure { e ->
+                _exportMessage.value = "Export failed: ${e.message}"
             }
         }
     }
 
     fun clearExportMessage() {
         _exportMessage.value = null
+    }
+
+    // ── SMS Bulk Import ───────────────────────────────────────────────────────
+
+    private val _importState = MutableStateFlow<ImportState>(ImportState.Idle)
+    val importState = _importState.asStateFlow()
+
+    fun startImport(fromMillis: Long) {
+        viewModelScope.launch {
+            _importState.value = ImportState.Loading(0, 0)
+            bulkSmsImportUseCase(fromMillis) { read, total ->
+                _importState.value = ImportState.Loading(read, total)
+            }.onSuccess { result ->
+                _importState.value = ImportState.Done(result.imported, result.skipped)
+            }.onFailure { e ->
+                _importState.value = ImportState.Error(e.message ?: "Import failed")
+            }
+        }
+    }
+
+    fun clearImportState() {
+        _importState.value = ImportState.Idle
     }
 }

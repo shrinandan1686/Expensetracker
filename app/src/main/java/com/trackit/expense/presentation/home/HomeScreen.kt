@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Badge
@@ -63,6 +64,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import com.trackit.expense.domain.model.Expense
+import com.trackit.expense.presentation.home.SyncStatus
 import com.trackit.expense.presentation.theme.DarkBackground
 import com.trackit.expense.presentation.theme.DarkSurface
 import com.trackit.expense.presentation.theme.DarkSurfaceVariant
@@ -161,6 +163,17 @@ fun HomeScreen(
                     budget = uiState.monthlyBudget,
                     modifier = Modifier.padding(16.dp)
                 )
+            }
+
+            // ── Sync Status Banner ────────────────────────────────────────────
+            if (uiState.syncStatus != SyncStatus.IDLE) {
+                item {
+                    SyncStatusBanner(
+                        status   = uiState.syncStatus,
+                        onRetry  = viewModel::onRetrySync,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                    )
+                }
             }
 
             // ── Unreviewed Warning ────────────────────────────────────────────
@@ -515,6 +528,97 @@ private fun ExpenseListItem(
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sync Status Banner — persistent, non-blocking, no popup
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun SyncStatusBanner(
+    status:   SyncStatus,
+    onRetry:  () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val (bgColor, iconTint, text, showRetry) = when (status) {
+        SyncStatus.PENDING -> BannerStyle(
+            bg       = Color(0xFFFF9800).copy(alpha = 0.15f),
+            tint     = Color(0xFFFF9800),
+            text     = "Sync pending — will retry when network is available",
+            retry    = false
+        )
+        SyncStatus.SYNCING -> BannerStyle(
+            bg       = TrackItPrimary.copy(alpha = 0.15f),
+            tint     = TrackItPrimary,
+            text     = "Syncing expenses…",
+            retry    = false
+        )
+        SyncStatus.FAILED -> BannerStyle(
+            bg       = com.trackit.expense.presentation.theme.BudgetError.copy(alpha = 0.15f),
+            tint     = com.trackit.expense.presentation.theme.BudgetError,
+            text     = "Sync failed after 24 h of retries",
+            retry    = true
+        )
+        SyncStatus.IDLE -> return  // should never reach here
+    }
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape    = RoundedCornerShape(12.dp),
+        colors   = CardDefaults.cardColors(containerColor = bgColor)
+    ) {
+        Row(
+            modifier          = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (status == SyncStatus.SYNCING) {
+                CircularProgressIndicator(
+                    color        = iconTint,
+                    strokeWidth  = 2.dp,
+                    modifier     = Modifier.size(18.dp)
+                )
+            } else {
+                Icon(
+                    imageVector        = if (status == SyncStatus.FAILED) Icons.Default.CloudOff else Icons.Default.Sync,
+                    contentDescription = null,
+                    tint               = iconTint,
+                    modifier           = Modifier.size(18.dp)
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text     = text,
+                color    = Color.White.copy(alpha = 0.85f),
+                style    = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f)
+            )
+            if (showRetry) {
+                Spacer(Modifier.width(8.dp))
+                androidx.compose.material3.TextButton(onClick = onRetry) {
+                    Text(
+                        "Retry",
+                        color      = com.trackit.expense.presentation.theme.BudgetError,
+                        fontWeight = FontWeight.Bold,
+                        fontSize   = 13.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+private data class BannerStyle(
+    val bg: Color,
+    val tint: Color,
+    val text: String,
+    val retry: Boolean
+)
+
+private operator fun BannerStyle.component1() = bg
+private operator fun BannerStyle.component2() = tint
+private operator fun BannerStyle.component3() = text
+private operator fun BannerStyle.component4() = retry
 
 private fun categoryEmoji(category: String): String = when {
     category.contains("Food",        ignoreCase = true) -> "🍔"

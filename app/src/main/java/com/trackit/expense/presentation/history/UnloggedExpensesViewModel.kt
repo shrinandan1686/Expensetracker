@@ -3,6 +3,7 @@ package com.trackit.expense.presentation.history
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.trackit.expense.domain.model.Expense
+import com.trackit.expense.domain.repository.ExpenseRepository
 import com.trackit.expense.domain.usecase.DeleteExpenseUseCase
 import com.trackit.expense.domain.usecase.GetUnloggedExpensesUseCase
 import com.trackit.expense.domain.usecase.MarkExpenseLoggedUseCase
@@ -24,7 +25,8 @@ data class UnloggedUiState(
 class UnloggedExpensesViewModel @Inject constructor(
     private val getUnloggedUseCase: GetUnloggedExpensesUseCase,
     private val markLoggedUseCase: MarkExpenseLoggedUseCase,
-    private val deleteExpenseUseCase: DeleteExpenseUseCase
+    private val deleteExpenseUseCase: DeleteExpenseUseCase,
+    private val expenseRepository: ExpenseRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(UnloggedUiState())
@@ -67,5 +69,13 @@ class UnloggedExpensesViewModel @Inject constructor(
 
     fun onErrorDismissed() {
         _uiState.update { it.copy(errorMessage = null) }
+    }
+
+    /** Persist a category change before the user taps "Log Now". */
+    fun updateCategory(expense: Expense, newCategory: String) {
+        viewModelScope.launch {
+            expenseRepository.update(expense.copy(category = newCategory))
+                .onFailure { e -> _uiState.update { it.copy(errorMessage = e.message) } }
+        }
     }
 }

@@ -1,5 +1,6 @@
 package com.trackit.expense.domain.repository
 
+import com.trackit.expense.data.local.dao.DailyTotal
 import com.trackit.expense.domain.model.Expense
 import kotlinx.coroutines.flow.Flow
 
@@ -48,6 +49,19 @@ interface ExpenseRepository {
      * Spending totals grouped by category for a specific month.
      */
     fun getCategoryTotalsByMonth(month: String): Flow<List<com.trackit.expense.data.local.dao.CategoryTotal>>
+
+    /**
+     * One-shot (non-reactive) sum of logged expenses for [month].
+     * Used by the Report ViewModel where a Flow isn't needed.
+     */
+    suspend fun getTotalByMonthOnce(month: String): Double
+
+    /**
+     * Per-day spending totals for [month] (one-shot).
+     * Returns a list of [DailyTotal] sorted by day ascending.
+     * Days with no spending are omitted — callers should fill missing days with 0.
+     */
+    suspend fun getDailyTotalsForMonth(month: String): List<DailyTotal>
 
     // ────────────────────────────── WRITES ────────────────────────────────────
 

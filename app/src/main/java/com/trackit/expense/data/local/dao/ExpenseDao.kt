@@ -183,6 +183,89 @@ interface ExpenseDao {
     /** Count of unsynced records — used to decide whether to start a sync. */
     @Query("SELECT COUNT(*) FROM expenses WHERE is_synced = 0")
     suspend fun getUnsyncedCount(): Int
+
+    // ─────────────────────────────── WIDGET ─────────────────────────────────
+
+    /**
+     * Returns the [limit] most-recently logged expenses, newest first.
+     * Used by [com.trackit.expense.widget.WidgetDataRepository] to populate
+     * the medium widget's "last N expenses" list.
+     */
+    @Query("""
+        SELECT * FROM expenses
+        WHERE is_logged = 1
+        ORDER BY transaction_at DESC
+        LIMIT :limit
+    """)
+    suspend fun getRecentLogged(limit: Int): List<ExpenseEntity>
+
+    // ─────────────────────────────── DUPLICATE DETECTION ────────────────────
+
+    /**
+     * Find expenses that might be duplicates of a newly-detected SMS transaction.
+     *
+     * A duplicate candidate must satisfy ALL of:
+     * - Same merchant (case-insensitive)
+     * - Amount within ±[amountTolerance] INR
+     * - [transactionAt] within ±[timeWindowMs] of [timestamp]
+     *
+     * Returns up to 5 candidates ordered by most recent first.
+     * The caller ([com.trackit.expense.sms.SmsReceiver]) picks the first result.
+     *
+     * @param merchant       Merchant name / VPA from the parsed SMS.
+     * @param amountMin      Lower bound: parsed amount − tolerance.
+     * @param amountMax      Upper bound: parsed amount + tolerance.
+     * @param startTime      Lower bound: SMS timestamp − window.
+     * @param endTime        Upper bound: SMS timestamp + window.
+     */
+    @Query("""
+        SELECT * FROM expenses
+        WHERE LOWER(merchant) = LOWER(:merchant)
+          AND amount BETWEEN :amountMin AND :amountMax
+          AND transaction_at BETWEEN :startTime AND :endTime
+        ORDER BY transaction_at DESC
+        LIMIT 5
+    """)
+    suspend fun findPotentialDuplicates(
+        merchant: String,
+        amountMin: Double,
+        amountMax: Double,
+        startTime: Long,
+        endTime: Long
+    ): List<ExpenseEntity>
+
+    // ─────────────────────────────── BULK IMPORT ────────────────────────────
+
+    /**
+     * Returns true if any expense already has [amount] and a [transactionAt]
+     * within [[timeMin], [timeMax]].  Used by [BulkSmsImportUseCase] to skip
+     * SMS messages that were already auto-saved by [SmsReceiver].
+     */
+    @Query("""
+        SELECT COUNT(*) > 0 FROM expenses
+        WHERE amount = :amount
+          AND transaction_at BETWEEN :timeMin AND :timeMax
+    """)
+    suspend fun existsByAmountAndTime(amount: Double, timeMin: Long, timeMax: Long): Boolean
+
+    // ─────────────────────────────── DAILY TOTALS ───────────────────────────
+
+    /**
+     * Sum of [ExpenseEntity.amount] grouped by day-of-month for logged expenses in [month].
+     *
+     * Used by the Report screen heatmap and daily breakdown.
+     * @param month "YYYY-MM" format, e.g. "2026-03".
+     */
+    @Query("""
+        SELECT CAST(strftime('%d', datetime(transaction_at / 1000, 'unixepoch')) AS INTEGER) AS day,
+               COALESCE(SUM(amount), 0.0) AS total
+        FROM expenses
+        WHERE strftime('%Y-%m', datetime(transaction_at / 1000, 'unixepoch')) = :month
+          AND is_logged = 1
+        GROUP BY day
+        ORDER BY day ASC
+    """)
+    suspend fun getDailyTotalsForMonth(month: String): List<DailyTotal>
 }
 
 /**
@@ -191,5 +274,14 @@ interface ExpenseDao {
  */
 data class CategoryTotal(
     val category: String,
+    val total: Double
+)
+
+/**
+ * Per-day spending total returned by [ExpenseDao.getDailyTotalsForMonth].
+ * [day] is 1-based (1 = first day of month).
+ */
+data class DailyTotal(
+    val day: Int,
     val total: Double
 )

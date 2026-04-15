@@ -12,6 +12,7 @@ import com.trackit.expense.presentation.add.AddExpenseScreen
 import com.trackit.expense.presentation.history.HistoryScreen
 import com.trackit.expense.presentation.home.HomeScreen
 import com.trackit.expense.presentation.detail.ExpenseDetailScreen
+import com.trackit.expense.presentation.report.ReportScreen
 
 /**
  * Navigation route definitions for TrackIt.
@@ -19,8 +20,8 @@ import com.trackit.expense.presentation.detail.ExpenseDetailScreen
 sealed class Screen(val route: String) {
     data object Onboarding : Screen("onboarding")
     data object Home       : Screen("home")
-    data object AddExpense : Screen("add_expense?amount={amount}&merchant={merchant}&account={account}&expenseId={expenseId}") {
-        const val DEEP_LINK = "trackit://add_expense?amount={amount}&merchant={merchant}&account={account}&expenseId={expenseId}"
+    data object AddExpense : Screen("add_expense?amount={amount}&merchant={merchant}&account={account}&expenseId={expenseId}&duplicateId={duplicateId}&isDuplicate={isDuplicate}") {
+        const val DEEP_LINK = "trackit://add_expense?amount={amount}&merchant={merchant}&account={account}&expenseId={expenseId}&duplicateId={duplicateId}&isDuplicate={isDuplicate}"
         fun createRoute(amount: String? = null, merchant: String? = null, account: String? = null, expenseId: String? = null): String {
             val queryParams = mutableListOf<String>()
             amount?.let { queryParams.add("amount=$it") }
@@ -39,6 +40,12 @@ sealed class Screen(val route: String) {
 
     data object ExpenseDetail : Screen("expense_detail/{expenseId}") {
         fun createRoute(expenseId: String) = "expense_detail/$expenseId"
+        fun deepLink(expenseId: String) = "trackit://expense_detail/$expenseId"
+        const val DEEP_LINK_PATTERN = "trackit://expense_detail/{expenseId}"
+    }
+
+    data object Reports : Screen("reports") {
+        const val DEEP_LINK = "trackit://reports"
     }
 }
 
@@ -75,10 +82,12 @@ fun NavGraph(
         composable(
             route = Screen.AddExpense.route,
             arguments = listOf(
-                navArgument("amount") { type = NavType.StringType; nullable = true },
-                navArgument("merchant") { type = NavType.StringType; nullable = true },
-                navArgument("account") { type = NavType.StringType; nullable = true },
-                navArgument("expenseId") { type = NavType.StringType; nullable = true }
+                navArgument("amount")      { type = NavType.StringType; nullable = true },
+                navArgument("merchant")    { type = NavType.StringType; nullable = true },
+                navArgument("account")     { type = NavType.StringType; nullable = true },
+                navArgument("expenseId")   { type = NavType.StringType; nullable = true },
+                navArgument("duplicateId") { type = NavType.StringType; nullable = true },
+                navArgument("isDuplicate") { type = NavType.StringType; nullable = true }
             ),
             deepLinks = listOf(
                 navDeepLink { uriPattern = Screen.AddExpense.DEEP_LINK }
@@ -115,12 +124,26 @@ fun NavGraph(
         }
 
         composable(Screen.Settings.route) {
-            com.trackit.expense.presentation.settings.SettingsScreen()
+            com.trackit.expense.presentation.settings.SettingsScreen(
+                onNavigateToReview = {
+                    navController.navigate(Screen.UnloggedExpenses.route)
+                }
+            )
         }
 
         composable(
-            route     = Screen.ExpenseDetail.route,
-            arguments = listOf(navArgument("expenseId") { type = NavType.StringType })
+            route = Screen.Reports.route,
+            deepLinks = listOf(
+                navDeepLink { uriPattern = Screen.Reports.DEEP_LINK }
+            )
+        ) {
+            ReportScreen(onNavigateBack = { navController.popBackStack() })
+        }
+
+        composable(
+            route      = Screen.ExpenseDetail.route,
+            arguments  = listOf(navArgument("expenseId") { type = NavType.StringType }),
+            deepLinks  = listOf(navDeepLink { uriPattern = Screen.ExpenseDetail.DEEP_LINK_PATTERN })
         ) {
             ExpenseDetailScreen(
                 onNavigateBack = { navController.popBackStack() }

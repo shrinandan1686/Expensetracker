@@ -79,6 +79,37 @@
         </receiver>
 
 
+        <!-- ──────────────── Widget Receiver ──────────────── -->
+        <!--
+            TrackItWidgetReceiver drives the Glance home screen widget.
+            android:exported="true" is required — the system sends APPWIDGET_UPDATE
+            broadcasts from outside the app's process.
+        -->
+        <receiver
+            android:name=".widget.TrackItWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/trackit_widget_info" />
+        </receiver>
+
+        <!--
+            FileProvider for sharing CSV exports via ACTION_SEND.
+            Authority must match the string used in ExportHelper.kt.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!--
             Disable WorkManager's default auto-initializer so that TrackItApp
             can supply a custom Configuration.Provider with HiltWorkerFactory.
