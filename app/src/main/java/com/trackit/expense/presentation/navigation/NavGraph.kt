@@ -9,15 +9,21 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
 import com.trackit.expense.presentation.add.AddExpenseScreen
+import com.trackit.expense.presentation.detail.ExpenseDetailScreen
+import com.trackit.expense.presentation.groups.AddSplitScreen
+import com.trackit.expense.presentation.groups.GroupDetailScreen
+import com.trackit.expense.presentation.groups.GroupListScreen
 import com.trackit.expense.presentation.history.HistoryScreen
 import com.trackit.expense.presentation.home.HomeScreen
-import com.trackit.expense.presentation.detail.ExpenseDetailScreen
+import com.trackit.expense.presentation.login.LoginScreen
+import com.trackit.expense.presentation.profile.ProfileScreen
 import com.trackit.expense.presentation.report.ReportScreen
 
 /**
  * Navigation route definitions for TrackIt.
  */
 sealed class Screen(val route: String) {
+    data object Login      : Screen("login")
     data object Onboarding : Screen("onboarding")
     data object Home       : Screen("home")
     data object AddExpense : Screen("add_expense?amount={amount}&merchant={merchant}&account={account}&expenseId={expenseId}&duplicateId={duplicateId}&isDuplicate={isDuplicate}") {
@@ -47,6 +53,18 @@ sealed class Screen(val route: String) {
     data object Reports : Screen("reports") {
         const val DEEP_LINK = "trackit://reports"
     }
+
+    data object Profile : Screen("profile")
+
+    data object GroupList : Screen("groups")
+
+    data object GroupDetail : Screen("groups/{groupId}") {
+        fun createRoute(groupId: String) = "groups/$groupId"
+    }
+
+    data object AddSplit : Screen("groups/{groupId}/add_split") {
+        fun createRoute(groupId: String) = "groups/$groupId/add_split"
+    }
 }
 
 /**
@@ -61,6 +79,16 @@ fun NavGraph(
         navController    = navController,
         startDestination = startDestination
     ) {
+        composable(Screen.Login.route) {
+            LoginScreen(
+                onLoginSuccess = {
+                    navController.navigate(Screen.Onboarding.route) {
+                        popUpTo(Screen.Login.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+
         composable(Screen.Onboarding.route) {
             com.trackit.expense.presentation.onboarding.OnboardingScreen(
                 onFinish = {
@@ -125,10 +153,36 @@ fun NavGraph(
 
         composable(Screen.Settings.route) {
             com.trackit.expense.presentation.settings.SettingsScreen(
-                onNavigateToReview = {
-                    navController.navigate(Screen.UnloggedExpenses.route)
-                }
+                onNavigateToReview  = { navController.navigate(Screen.UnloggedExpenses.route) },
+                onNavigateToProfile = { navController.navigate(Screen.Profile.route) }
             )
+        }
+
+        composable(Screen.Profile.route) {
+            ProfileScreen(onNavigateBack = { navController.popBackStack() })
+        }
+
+        composable(Screen.GroupList.route) {
+            GroupListScreen(
+                onGroupClick = { groupId -> navController.navigate(Screen.GroupDetail.createRoute(groupId)) }
+            )
+        }
+
+        composable(
+            route = Screen.GroupDetail.route,
+            arguments = listOf(navArgument("groupId") { type = NavType.StringType })
+        ) {
+            GroupDetailScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onAddSplit = { groupId -> navController.navigate(Screen.AddSplit.createRoute(groupId)) }
+            )
+        }
+
+        composable(
+            route = Screen.AddSplit.route,
+            arguments = listOf(navArgument("groupId") { type = NavType.StringType })
+        ) {
+            AddSplitScreen(onNavigateBack = { navController.popBackStack() })
         }
 
         composable(

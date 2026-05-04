@@ -88,7 +88,8 @@ class SyncWorker @AssistedInject constructor(
                 isLogged      = e.isLogged,
                 transactionAt = e.transactionAt,
                 loggedAt      = e.loggedAt,
-                createdAt     = e.createdAt
+                createdAt     = e.createdAt,
+                updatedAt     = e.updatedAt
             )
         }
 

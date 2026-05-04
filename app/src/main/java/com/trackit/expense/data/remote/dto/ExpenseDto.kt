@@ -26,7 +26,8 @@ data class ExpenseDto(
     @SerializedName("is_logged")      val isLogged: Boolean,
     @SerializedName("transaction_at") val transactionAt: Long,
     @SerializedName("logged_at")      val loggedAt: Long?,
-    @SerializedName("created_at")     val createdAt: Long
+    @SerializedName("created_at")     val createdAt: Long,
+    @SerializedName("updated_at")     val updatedAt: Long = createdAt
 )
 
 // ─────────────────────────────────────────────────────────────────────────────

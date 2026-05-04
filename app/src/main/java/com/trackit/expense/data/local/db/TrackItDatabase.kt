@@ -6,10 +6,14 @@ import com.trackit.expense.data.local.dao.AccountDao
 import com.trackit.expense.data.local.dao.BudgetDao
 import com.trackit.expense.data.local.dao.CategoryDao
 import com.trackit.expense.data.local.dao.ExpenseDao
+import com.trackit.expense.data.local.dao.GroupDao
+import com.trackit.expense.data.local.dao.SplitDao
 import com.trackit.expense.data.local.entity.AccountEntity
 import com.trackit.expense.data.local.entity.BudgetEntity
 import com.trackit.expense.data.local.entity.CategoryEntity
 import com.trackit.expense.data.local.entity.ExpenseEntity
+import com.trackit.expense.data.local.entity.GroupEntity
+import com.trackit.expense.data.local.entity.SplitEntity
 
 /**
  * Main Room database for TrackIt — single source of truth for all local data.
@@ -37,9 +41,11 @@ import com.trackit.expense.data.local.entity.ExpenseEntity
         ExpenseEntity::class,
         BudgetEntity::class,
         AccountEntity::class,
-        CategoryEntity::class
+        CategoryEntity::class,
+        GroupEntity::class,
+        SplitEntity::class
     ],
-    version = 5,
+    version = 7,
     exportSchema = false
 )
 abstract class TrackItDatabase : RoomDatabase() {
@@ -48,6 +54,8 @@ abstract class TrackItDatabase : RoomDatabase() {
     abstract fun budgetDao(): BudgetDao
     abstract fun accountDao(): AccountDao
     abstract fun categoryDao(): CategoryDao
+    abstract fun groupDao(): GroupDao
+    abstract fun splitDao(): SplitDao
 
     companion object {
         const val DATABASE_NAME = "trackit_db"

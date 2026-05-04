@@ -2,6 +2,7 @@ package com.trackit.expense.di
 
 import com.google.gson.Gson
 import com.trackit.expense.data.remote.api.TrackItApiService
+import com.trackit.expense.data.remote.interceptor.AuthInterceptor
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -13,19 +14,13 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
-/**
- * Hilt module providing Retrofit + OkHttp network dependencies.
- *
- * Installed in [SingletonComponent] for app-wide singleton networking.
- *
- * TODO: Replace [BASE_URL] with actual Cloudflare Workers URL.
- * TODO: Add authentication interceptor (e.g. Bearer token from DataStore).
- */
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
 
-    private const val BASE_URL      = "http://192.168.1.12:8787/"
+    // Local wrangler dev: "http://192.168.31.185:8787/"
+    // Deployed:          "https://<your-worker>.workers.dev/"
+    private const val BASE_URL = "http://192.168.31.185:8787/"
     private const val TIMEOUT_SECS  = 30L
 
     @Provides
@@ -38,8 +33,10 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideOkHttpClient(
+        authInterceptor: AuthInterceptor,
         loggingInterceptor: HttpLoggingInterceptor
     ): OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor(authInterceptor)       // auth before logging so token appears in logs
         .addInterceptor(loggingInterceptor)
         .connectTimeout(TIMEOUT_SECS, TimeUnit.SECONDS)
         .readTimeout(TIMEOUT_SECS, TimeUnit.SECONDS)

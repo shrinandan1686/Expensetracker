@@ -1,17 +1,16 @@
 [versions]
 # Android & Kotlin
-agp = "8.4.2"
-kotlin = "1.9.24"
-ksp = "1.9.24-1.0.20"
+agp = "8.13.2"
+kotlin = "2.1.0"
+ksp = "2.1.0-1.0.29"
 
 # AndroidX Core
 coreKtx = "1.13.1"
 activityCompose = "1.9.1"
 lifecycleRuntimeKtx = "2.8.4"
 
-# Compose
+# Compose — composeCompiler removed: Kotlin 2.x bundles it via kotlin.plugin.compose
 composeBom = "2024.06.00"
-composeCompiler = "1.5.14"
 
 # Navigation
 navigationCompose = "2.7.7"
@@ -24,7 +23,7 @@ retrofit = "2.11.0"
 okhttp = "4.12.0"
 
 # Hilt
-hilt = "2.51.1"
+hilt = "2.55"
 hiltNavigationCompose = "1.2.0"
 
 # WorkManager
@@ -45,6 +44,11 @@ googlePlayServicesLocation = "21.3.0"
 
 # Glance (home screen widget)
 glance = "1.1.0"
+
+# Firebase & Google
+firebaseBom = "34.12.0"
+googleServices = "4.4.4"
+playServicesAuth = "21.2.0"
 
 # Testing
 junit = "4.13.2"
@@ -105,6 +109,8 @@ androidx-hilt-compiler = { group = "androidx.hilt", name = "hilt-compiler", vers
 # Coroutines
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
+# Coroutines adapter for Google Tasks API (Task<T>.await())
+kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutines" }
 
 # Accompanist
 accompanist-permissions = { group = "com.google.accompanist", name = "accompanist-permissions", version.ref = "accompanist" }
@@ -116,6 +122,11 @@ androidx-glance-appwidget = { group = "androidx.glance", name = "glance-appwidge
 androidx-glance-material3 = { group = "androidx.glance", name = "glance-material3", version.ref = "glance" }
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 google-play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "googlePlayServicesLocation" }
+
+# Firebase (individual artifact versions managed by BOM — no version.ref on auth-ktx)
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
+firebase-auth = { group = "com.google.firebase", name = "firebase-auth" }
+google-play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
 
 # Testing
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -133,6 +144,8 @@ androidx-arch-core-testing = { group = "androidx.arch.core", name = "core-testin
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-kapt = { id = "org.jetbrains.kotlin.kapt", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
+google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }

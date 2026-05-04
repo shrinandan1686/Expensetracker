@@ -41,6 +41,7 @@ import java.util.Calendar
 @Composable
 fun SettingsScreen(
     onNavigateToReview: () -> Unit = {},
+    onNavigateToProfile: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState       by viewModel.uiState.collectAsState()
@@ -115,6 +116,23 @@ fun SettingsScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
+            // ── PROFILE SECTION ──────────────────────────────────────────────
+            item {
+                SettingsSection(title = "ACCOUNT") {
+                    ListItem(
+                        headlineContent = { Text("My Profile") },
+                        supportingContent = { Text("Name, UPI ID") },
+                        leadingContent = {
+                            Icon(Icons.Default.AccountCircle, contentDescription = null)
+                        },
+                        trailingContent = {
+                            Icon(Icons.Default.ChevronRight, contentDescription = null)
+                        },
+                        modifier = Modifier.clickable { onNavigateToProfile() }
+                    )
+                }
+            }
+
             // ── ACCOUNTS SECTION ─────────────────────────────────────────────
             item {
                 SettingsSection(

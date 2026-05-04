@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "780637682913",
+    "project_id": "trackit-84f11",
+    "storage_bucket": "trackit-84f11.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:780637682913:android:fcee7d3d2e86c5db450ba0",
+        "android_client_info": {
+          "package_name": "com.trackit.expense"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "780637682913-ig8n0qaq577lmqkpcblj18b1em3bvmqd.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.trackit.expense",
+            "certificate_hash": "7123d3d4812e379560de15783369dff59e5c9b22"
+          }
+        },
+        {
+          "client_id": "780637682913-egpqgk2cqd7mbog1beugoe3kkk8vste6.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAMVrJquKSlcWXTfQKsORvM3s6J_FEOQbs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "780637682913-egpqgk2cqd7mbog1beugoe3kkk8vste6.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,14 +1,22 @@
 package com.trackit.expense.di
 
 import com.google.gson.Gson
+import com.trackit.expense.data.repository.AuthRepositoryImpl
 import com.trackit.expense.data.repository.BudgetRepositoryImpl
 import com.trackit.expense.data.repository.ExpenseRepositoryImpl
+import com.trackit.expense.data.repository.GroupRepositoryImpl
 import com.trackit.expense.data.repository.PreferenceRepositoryImpl
+import com.trackit.expense.data.repository.SettingsRepositoryImpl
+import com.trackit.expense.data.repository.SplitRepositoryImpl
+import com.trackit.expense.data.repository.UserRepositoryImpl
+import com.trackit.expense.domain.repository.AuthRepository
 import com.trackit.expense.domain.repository.BudgetRepository
 import com.trackit.expense.domain.repository.ExpenseRepository
+import com.trackit.expense.domain.repository.GroupRepository
 import com.trackit.expense.domain.repository.PreferenceRepository
 import com.trackit.expense.domain.repository.SettingsRepository
-import com.trackit.expense.data.repository.SettingsRepositoryImpl
+import com.trackit.expense.domain.repository.SplitRepository
+import com.trackit.expense.domain.repository.UserRepository
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -27,6 +35,12 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class RepositoryModule {
+
+    @Binds
+    @Singleton
+    abstract fun bindAuthRepository(
+        impl: AuthRepositoryImpl
+    ): AuthRepository
 
     @Binds
     @Singleton
@@ -51,6 +65,24 @@ abstract class RepositoryModule {
     abstract fun bindSettingsRepository(
         impl: SettingsRepositoryImpl
     ): SettingsRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindUserRepository(
+        impl: UserRepositoryImpl
+    ): UserRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindGroupRepository(
+        impl: GroupRepositoryImpl
+    ): GroupRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindSplitRepository(
+        impl: SplitRepositoryImpl
+    ): SplitRepository
 
     companion object {
         /**

@@ -7,6 +7,8 @@ import com.trackit.expense.data.local.dao.AccountDao
 import com.trackit.expense.data.local.dao.BudgetDao
 import com.trackit.expense.data.local.dao.CategoryDao
 import com.trackit.expense.data.local.dao.ExpenseDao
+import com.trackit.expense.data.local.dao.GroupDao
+import com.trackit.expense.data.local.dao.SplitDao
 import com.trackit.expense.data.local.db.DatabaseMigrations
 import com.trackit.expense.data.local.db.TrackItDatabase
 import dagger.Module
@@ -83,6 +85,14 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideCategoryDao(database: TrackItDatabase): CategoryDao = database.categoryDao()
+
+    @Provides
+    @Singleton
+    fun provideGroupDao(database: TrackItDatabase): GroupDao = database.groupDao()
+
+    @Provides
+    @Singleton
+    fun provideSplitDao(database: TrackItDatabase): SplitDao = database.splitDao()
 
     /**
      * Provides a singleton [WorkManager] instance.

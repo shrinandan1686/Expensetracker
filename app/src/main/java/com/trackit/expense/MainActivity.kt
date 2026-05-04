@@ -35,6 +35,7 @@ import com.trackit.expense.presentation.theme.DarkBackground
 import com.trackit.expense.presentation.theme.DarkSurface
 import com.trackit.expense.presentation.theme.TrackItPrimary
 import com.trackit.expense.presentation.theme.TrackItTheme
+import com.google.firebase.auth.FirebaseAuth
 import com.trackit.expense.sms.SmsReceiver
 import com.trackit.expense.util.OemBatteryHelper
 import com.trackit.expense.util.PendingExpenseStore
@@ -85,26 +86,30 @@ class MainActivity : ComponentActivity() {
 
             TrackItTheme(darkTheme = darkTheme, dynamicColor = dynamicColor) {
                 val isOnboardingCompleted = remember { preferenceRepository.isOnboardingCompleted() }
+                val isAuthenticated = remember { FirebaseAuth.getInstance().currentUser != null }
 
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val navController = rememberNavController()
-                    val startDest = if (isOnboardingCompleted) Screen.Home.route
-                                    else Screen.Onboarding.route
+                    val startDest = when {
+                        !isAuthenticated      -> Screen.Login.route
+                        !isOnboardingCompleted -> Screen.Onboarding.route
+                        else                   -> Screen.Home.route
+                    }
 
-                    Scaffold(bottomBar = { TrackItBottomNav(navController) }) { padding ->
-                        Box(Modifier.padding(padding)) {
-                            NavGraph(navController = navController, startDestination = startDest)
-
+                    Scaffold(
+                        containerColor = DarkBackground,
+                        bottomBar = { 
+                        Column {
                             // ── In-app status banners (non-blocking) ─────────
                             Column(
                                 modifier = Modifier
-                                    .align(Alignment.BottomCenter)
                                     .fillMaxWidth()
                                     .padding(horizontal = 16.dp)
                                     .padding(bottom = 8.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                // Overlay permission lost
+                                // Overlay permission lost banner (Hidden per user request)
+                                /*
                                 if (!overlayPermissionOk) {
                                     StatusBanner(
                                         icon    = Icons.Default.CloudOff,
@@ -121,6 +126,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                     )
                                 }
+                                */
 
                                 // SMS receiver killed by OEM
                                 if (!smsReceiverAlive) {
@@ -157,12 +163,18 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                             }
+                            TrackItBottomNav(navController) 
+                        }
+                    }) { padding ->
+                        Box(Modifier.padding(padding)) {
+                            NavGraph(navController = navController, startDestination = startDest)
+
                         }
                     }
                 }
 
                 // ── Critical Permission Guard (blocking) ─────────────────────
-                if (isOnboardingCompleted && !isCoreFunctional) {
+                if (isAuthenticated && isOnboardingCompleted && !isCoreFunctional) {
                     PermissionsRequiredDialog()
                 }
             }

@@ -1,79 +1,68 @@
-/**
- * MongoDB Atlas Data API Client for Cloudflare Workers.
- * 
- * Uses the native fetch API to interact with Atlas Data API.
- */
+import { MongoClient, Db, ObjectId } from 'mongodb';
 
-export interface MongoConfig {
-  apiUrl: string;
-  apiKey: string;
-  dataSource: string;
-  database: string;
+// Worker-scoped connection cache — reused across requests within the same isolate.
+let cachedClient: MongoClient | null = null;
+let cachedDb: Db | null = null;
+
+async function connect(uri: string, dbName: string): Promise<Db> {
+  if (cachedClient && cachedDb) return cachedDb;
+  cachedClient = new MongoClient(uri);
+  await cachedClient.connect();
+  cachedDb = cachedClient.db(dbName);
+  return cachedDb;
 }
 
 export class MongoDataAPI {
-  constructor(private config: MongoConfig) {}
+  constructor(private uri: string, private dbName: string) {}
 
-  /**
-   * Performs a request to the Atlas Data API.
-   */
-  private async request(action: string, collection: string, body: any) {
-    const url = `${this.config.apiUrl}/action/${action}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'api-key': this.config.apiKey,
-      },
-      body: JSON.stringify({
-        dataSource: this.config.dataSource,
-        database: this.config.database,
-        collection: collection,
-        ...body,
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`MongoDB Data API Error: ${error}`);
-    }
-
-    return await response.json();
+  private async db(): Promise<Db> {
+    return connect(this.uri, this.dbName);
   }
 
-  async findOne(collection: string, filter: any) {
-    return this.request('findOne', collection, { filter });
+  async findOne(collection: string, filter: Record<string, unknown>) {
+    const db = await this.db();
+    const doc = await db.collection(collection).findOne(filter);
+    return { document: doc };
   }
 
-  async find(collection: string, filter: any, options: { limit?: number; skip?: number; sort?: any } = {}) {
-    return this.request('find', collection, { filter, ...options });
+  async find(
+    collection: string,
+    filter: Record<string, unknown>,
+    options: { limit?: number; skip?: number; sort?: Record<string, unknown> } = {}
+  ) {
+    const db = await this.db();
+    let cursor = db.collection(collection).find(filter);
+    if (options.sort) cursor = cursor.sort(options.sort as any);
+    if (options.skip)  cursor = cursor.skip(options.skip);
+    if (options.limit) cursor = cursor.limit(options.limit);
+    const documents = await cursor.toArray();
+    return { documents };
   }
 
-  async insertOne(collection: string, document: any) {
-    return this.request('insertOne', collection, { document });
+  async insertOne(collection: string, document: Record<string, unknown>) {
+    const db = await this.db();
+    const result = await db.collection(collection).insertOne(document as any);
+    return { insertedId: result.insertedId.toString() };
   }
 
-  async updateOne(collection: string, filter: any, update: any, upsert = false) {
-    return this.request('updateOne', collection, { filter, update, upsert });
+  async updateOne(
+    collection: string,
+    filter: Record<string, unknown>,
+    update: Record<string, unknown>,
+    upsert = false
+  ) {
+    const db = await this.db();
+    const result = await db.collection(collection).updateOne(filter, update as any, { upsert });
+    return { matchedCount: result.matchedCount, modifiedCount: result.modifiedCount, upsertedId: result.upsertedId?.toString() };
   }
 
-  async aggregate(collection: string, pipeline: any[]) {
-    return this.request('aggregate', collection, { pipeline });
+  async aggregate(collection: string, pipeline: Record<string, unknown>[]) {
+    const db = await this.db();
+    const documents = await db.collection(collection).aggregate(pipeline).toArray();
+    return { documents };
   }
 
-  /**
-   * Helper for bulk upsert.
-   * Note: The Data API doesn't have a direct 'bulkWrite', so we perform
-   * multiple updateOne operations sequentially or concurrently.
-   * For simplicity and to avoid Worker limits, we'll do them in chunks.
-   */
-  async bulkUpsert(collection: string, items: { filter: any; update: any }[]) {
-    const results = [];
-    // Data API doesn't support bulk write in a single call for updateOne with different filters.
-    // We iterate and execute. In a real production app, you'd use a more sophisticated batching approach.
-    for (const item of items) {
-      results.push(this.updateOne(collection, item.filter, item.update, true));
-    }
-    return Promise.all(results);
+  async bulkUpsert(collection: string, items: { filter: Record<string, unknown>; update: Record<string, unknown> }[]) {
+    return Promise.all(items.map(item => this.updateOne(collection, item.filter, item.update, true)));
   }
 }

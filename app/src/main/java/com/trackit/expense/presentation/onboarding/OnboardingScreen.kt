@@ -47,7 +47,7 @@ fun OnboardingScreen(
     viewModel: OnboardingViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val pagerState = rememberPagerState(pageCount = { 2 })
+    val pagerState = rememberPagerState(pageCount = { 3 })
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(uiState.isCompleted) {
@@ -69,8 +69,15 @@ fun OnboardingScreen(
                 1 -> PageTwoBatteryAndBudget(
                     budgetInput = uiState.budgetInput,
                     onBudgetChanged = viewModel::onBudgetInputChanged,
-                    onFinish = viewModel::completeOnboarding,
-                    isSaving = uiState.isSaving
+                    onNext = { scope.launch { pagerState.animateScrollToPage(2) } }
+                )
+                2 -> PageThreeProfile(
+                    nameInput  = uiState.nameInput,
+                    upiIdInput = uiState.upiIdInput,
+                    onNameChanged  = viewModel::onNameChanged,
+                    onUpiIdChanged = viewModel::onUpiIdChanged,
+                    onFinish  = viewModel::completeOnboarding,
+                    isSaving  = uiState.isSaving
                 )
             }
         }
@@ -90,7 +97,7 @@ fun OnboardingScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                repeat(2) { iteration ->
+                repeat(3) { iteration ->
                     val color = if (pagerState.currentPage == iteration) TrackItPrimary else Color.White.copy(alpha = 0.2f)
                     Box(
                         modifier = Modifier
@@ -102,8 +109,8 @@ fun OnboardingScreen(
                 }
             }
 
-            // Next button (shown on Page 0)
-            if (pagerState.currentPage < 1) {
+            // Next button (shown on Pages 0 — page 1 has its own Next button)
+            if (pagerState.currentPage == 0) {
                 FloatingActionButton(
                     onClick = {
                         scope.launch {
@@ -142,8 +149,7 @@ private fun PageOneRuntimePermissions() {
 private fun PageTwoBatteryAndBudget(
     budgetInput: String,
     onBudgetChanged: (String) -> Unit,
-    onFinish: () -> Unit,
-    isSaving: Boolean
+    onNext: () -> Unit
 ) {
     val context = LocalContext.current
 
@@ -214,16 +220,98 @@ private fun PageTwoBatteryAndBudget(
         Spacer(Modifier.height(48.dp))
         
         Button(
-            onClick = onFinish,
+            onClick = onNext,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = TrackItPrimary)
+        ) {
+            Text("Next", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        }
+    }
+}
+
+@Composable
+private fun PageThreeProfile(
+    nameInput: String,
+    upiIdInput: String,
+    onNameChanged: (String) -> Unit,
+    onUpiIdChanged: (String) -> Unit,
+    onFinish: () -> Unit,
+    isSaving: Boolean
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp)
+            .verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        IllustrationCircle(icon = Icons.Default.AccountCircle)
+        Spacer(Modifier.height(32.dp))
+        Text(
+            text = "Your identity",
+            style = MaterialTheme.typography.headlineMedium,
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = "Set your display name and UPI ID so friends can settle up with you later.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = Color.White.copy(alpha = 0.7f),
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(32.dp))
+
+        OutlinedTextField(
+            value = nameInput,
+            onValueChange = onNameChanged,
+            label = { Text("Your name") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                focusedBorderColor = TrackItPrimary,
+                unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
+                focusedLabelColor = TrackItPrimary,
+                unfocusedLabelColor = Color.White.copy(alpha = 0.5f)
+            )
+        )
+        Spacer(Modifier.height(16.dp))
+        OutlinedTextField(
+            value = upiIdInput,
+            onValueChange = onUpiIdChanged,
+            label = { Text("UPI ID (optional)") },
+            placeholder = { Text("yourname@upi", color = Color.White.copy(alpha = 0.3f)) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                focusedBorderColor = TrackItPrimary,
+                unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
+                focusedLabelColor = TrackItPrimary,
+                unfocusedLabelColor = Color.White.copy(alpha = 0.5f)
+            )
+        )
+
+        Spacer(Modifier.height(48.dp))
+
+        Button(
+            onClick = onFinish,
+            modifier = Modifier.fillMaxWidth().height(56.dp),
             shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(containerColor = TrackItPrimary),
             enabled = !isSaving
         ) {
             if (isSaving) {
-                CircularProgressIndicator(size = 24.dp, color = Color.White)
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
             } else {
                 Text("Get Started", fontWeight = FontWeight.Bold, fontSize = 18.sp)
             }

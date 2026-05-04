@@ -19,15 +19,8 @@
 		"enabled": true
 	},
 	"upload_source_maps": true,
-	"kv_namespaces": [
-		{
-			"binding": "SESSIONS",
-			"id": "placeholder_kv_id"
-		}
-	],
 	"vars": {
-		"MONGODB_API_URL": "https://data.mongodb-api.com/app/data-xxxx/endpoint/data/v1",
-		"MONGODB_DATASOURCE": "Cluster0",
-		"MONGODB_DATABASE": "trackit"
+		"MONGODB_DATABASE": "trackit",
+		"FIREBASE_PROJECT_ID": "trackit-84f11"
 	}
 }

@@ -1,9 +1,10 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.kapt)
+    alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+    alias(libs.plugins.google.services)
 }
 
 android {
@@ -34,7 +35,6 @@ android {
         }
         debug {
             isDebuggable = true
-            applicationIdSuffix = ".debug"
         }
     }
 
@@ -52,9 +52,7 @@ android {
         buildConfig = true
     }
 
-    composeOptions {
-        kotlinCompilerExtensionVersion = libs.versions.composeCompiler.get()
-    }
+    // composeOptions removed: Kotlin 2.x uses kotlin.plugin.compose instead
 
     packaging {
         resources {
@@ -99,13 +97,13 @@ dependencies {
 
     // Hilt Dependency Injection
     implementation(libs.hilt.android)
-    kapt(libs.hilt.android.compiler)
+    ksp(libs.hilt.android.compiler)
     implementation(libs.hilt.navigation.compose)
 
     // WorkManager
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.hilt.work)
-    kapt(libs.androidx.hilt.compiler)
+    ksp(libs.androidx.hilt.compiler)
 
     // Kotlin Coroutines
     implementation(libs.kotlinx.coroutines.android)
@@ -119,6 +117,12 @@ dependencies {
     implementation(libs.shortcutbadger)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.google.play.services.location)
+
+    // Firebase
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.auth)
+    implementation(libs.google.play.services.auth)
+    implementation(libs.kotlinx.coroutines.play.services)
 
     // Glance – home screen widget
     implementation(libs.androidx.glance.appwidget)
@@ -145,12 +149,8 @@ dependencies {
     androidTestImplementation(libs.hilt.android.testing)
     androidTestImplementation(libs.androidx.room.testing)
     androidTestImplementation(libs.androidx.arch.core.testing)
-    kaptAndroidTest(libs.hilt.android.compiler)
+    kspAndroidTest(libs.hilt.android.compiler)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 }
 
-// Hilt requires kapt to be configured
-kapt {
-    correctErrorTypes = true
-}

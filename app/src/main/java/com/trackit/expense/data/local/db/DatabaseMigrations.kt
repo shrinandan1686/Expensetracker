@@ -143,4 +143,44 @@ object DatabaseMigrations {
             db.execSQL("ALTER TABLE expenses ADD COLUMN location_address TEXT")
         }
     }
+
+    val MIGRATION_5_6: Migration = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE expenses ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("UPDATE expenses SET updated_at = created_at WHERE updated_at = 0")
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // v6 → v7 : Added groups and splits tables for Phase 2 group splits feature
+    // ────────────────────────────────────────────────────────────────────────
+    val MIGRATION_6_7: Migration = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS groups (
+                    id           TEXT NOT NULL PRIMARY KEY,
+                    name         TEXT NOT NULL,
+                    emoji        TEXT,
+                    created_by   TEXT NOT NULL,
+                    members_json TEXT NOT NULL DEFAULT '[]',
+                    created_at   INTEGER NOT NULL DEFAULT 0
+                )
+            """.trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_groups_created_by ON groups(created_by)")
+
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS splits (
+                    id                TEXT    NOT NULL PRIMARY KEY,
+                    group_id          TEXT    NOT NULL,
+                    description       TEXT    NOT NULL,
+                    total_amount      REAL    NOT NULL DEFAULT 0.0,
+                    paid_by           TEXT    NOT NULL,
+                    participants_json TEXT    NOT NULL DEFAULT '[]',
+                    expense_id        TEXT,
+                    created_at        INTEGER NOT NULL DEFAULT 0
+                )
+            """.trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_splits_group_id ON splits(group_id)")
+        }
+    }
 }

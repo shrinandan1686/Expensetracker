@@ -130,7 +130,7 @@ private fun DetailContent(expense: Expense) {
                 )
                 Spacer(Modifier.height(8.dp))
                 Surface(
-                    shape = RoundedCornerShape(100.dp),
+                    shape = androidx.compose.foundation.shape.CircleShape,
                     color = TrackItPrimary.copy(alpha = 0.2f)
                 ) {
                     Text(
