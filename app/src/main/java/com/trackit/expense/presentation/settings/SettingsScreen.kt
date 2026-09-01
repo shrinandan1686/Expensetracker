@@ -2,6 +2,7 @@ package com.trackit.expense.presentation.settings
 
 import android.Manifest
 import android.content.Intent
+import android.net.Uri
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -37,11 +38,16 @@ import com.trackit.expense.data.local.entity.CategoryEntity
 import com.trackit.expense.domain.repository.ThemeMode
 import java.util.Calendar
 
+/** Public policy document, opened in the browser from Settings. */
+private const val PRIVACY_POLICY_URL =
+    "https://github.com/shrinandan1686/Expensetracker/blob/main/PRIVACY.md"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onNavigateToReview: () -> Unit = {},
     onNavigateToProfile: () -> Unit = {},
+    onAccountDeleted: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState       by viewModel.uiState.collectAsState()
@@ -54,6 +60,55 @@ fun SettingsScreen(
     var showAddAccountSheet  by remember { mutableStateOf(false) }
     var showAddCategorySheet by remember { mutableStateOf(false) }
     var showImportDialog     by remember { mutableStateOf(false) }
+    var showDeleteAccountDialog by remember { mutableStateOf(false) }
+
+    val deleteAccountState by viewModel.deleteAccountState.collectAsState()
+
+    // Once the account is gone there is nothing left for this screen to show, so
+    // hand control back to the caller to return to login.
+    LaunchedEffect(deleteAccountState) {
+        when (val state = deleteAccountState) {
+            is DeleteAccountState.Deleted -> onAccountDeleted()
+            is DeleteAccountState.Error -> {
+                snackbarHostState.showSnackbar(state.message)
+                viewModel.dismissDeleteAccountError()
+            }
+            else -> Unit
+        }
+    }
+
+    if (showDeleteAccountDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAccountDialog = false },
+            icon = { Icon(Icons.Default.DeleteForever, contentDescription = null) },
+            title = { Text("Delete account?") },
+            text = {
+                Text(
+                    "This permanently erases your profile, every expense and all budgets, " +
+                        "on this device and on the server. It cannot be undone.\n\n" +
+                        "Shared group splits stay so other members' balances remain correct, " +
+                        "but you are removed from those groups."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = deleteAccountState !is DeleteAccountState.Deleting,
+                    onClick = {
+                        showDeleteAccountDialog = false
+                        viewModel.deleteAccount()
+                    }
+                ) {
+                    Text(
+                        if (deleteAccountState is DeleteAccountState.Deleting) "Deleting…" else "Delete",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteAccountDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
 
     // Runtime READ_SMS permission
     var hasSmsPermission by remember {
@@ -353,7 +408,25 @@ fun SettingsScreen(
                         title = "Privacy Policy",
                         subtitle = "Read how we handle your data",
                         icon = Icons.Default.Policy,
-                        onClick = { /* Open WebView */ }
+                        onClick = {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_POLICY_URL))
+                                )
+                            }
+                        }
+                    )
+                }
+            }
+
+            // ── DANGER ZONE ─────────────────────────────────────────────────
+            item {
+                SettingsSection(title = "ACCOUNT") {
+                    SettingsClickItem(
+                        title = "Delete Account",
+                        subtitle = "Permanently erase your account and all data",
+                        icon = Icons.Default.DeleteForever,
+                        onClick = { showDeleteAccountDialog = true }
                     )
                 }
             }

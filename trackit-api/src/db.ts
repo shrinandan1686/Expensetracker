@@ -74,6 +74,12 @@ export class MongoDataAPI {
     return { matchedCount: result.matchedCount, modifiedCount: result.modifiedCount, upsertedId: result.upsertedId?.toString() };
   }
 
+  async deleteMany(collection: string, filter: Record<string, unknown>) {
+    const db = await this.db();
+    const result = await db.collection(collection).deleteMany(filter);
+    return { deletedCount: result.deletedCount };
+  }
+
   async aggregate(collection: string, pipeline: Record<string, unknown>[]) {
     const db = await this.db();
     const documents = await db.collection(collection).aggregate(pipeline).toArray();

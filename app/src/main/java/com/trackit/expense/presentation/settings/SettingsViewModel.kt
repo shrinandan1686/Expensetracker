@@ -9,6 +9,7 @@ import com.trackit.expense.data.local.entity.AccountEntity
 import com.trackit.expense.data.local.entity.AccountType
 import com.trackit.expense.data.local.entity.CategoryEntity
 import com.trackit.expense.domain.repository.SettingsRepository
+import com.trackit.expense.domain.repository.UserRepository
 import com.trackit.expense.domain.repository.ThemeMode
 import com.trackit.expense.domain.usecase.BulkSmsImportUseCase
 import com.trackit.expense.domain.usecase.ExportDataUseCase
@@ -42,7 +43,8 @@ class SettingsViewModel @Inject constructor(
     private val categoryDao: CategoryDao,
     private val settingsRepository: SettingsRepository,
     private val exportDataUseCase: ExportDataUseCase,
-    private val bulkSmsImportUseCase: BulkSmsImportUseCase
+    private val bulkSmsImportUseCase: BulkSmsImportUseCase,
+    private val userRepository: UserRepository
 ) : ViewModel() {
 
     val uiState: StateFlow<SettingsUiState> = combine(
@@ -164,6 +166,34 @@ class SettingsViewModel @Inject constructor(
 
     // ── SMS Bulk Import ───────────────────────────────────────────────────────
 
+    // ── Account deletion ─────────────────────────────────────────────────────
+
+    private val _deleteAccountState = MutableStateFlow<DeleteAccountState>(DeleteAccountState.Idle)
+    val deleteAccountState: StateFlow<DeleteAccountState> = _deleteAccountState.asStateFlow()
+
+    /**
+     * Deletes the account and all its data. Irreversible — the caller is expected
+     * to have shown a confirmation dialog first.
+     */
+    fun deleteAccount() {
+        if (_deleteAccountState.value is DeleteAccountState.Deleting) return
+        _deleteAccountState.value = DeleteAccountState.Deleting
+        viewModelScope.launch {
+            userRepository.deleteAccount()
+                .onSuccess { _deleteAccountState.value = DeleteAccountState.Deleted }
+                .onFailure {
+                    // Nothing local has been touched at this point, so retrying is safe.
+                    _deleteAccountState.value = DeleteAccountState.Error(
+                        it.message ?: "Could not delete your account. Please try again."
+                    )
+                }
+        }
+    }
+
+    fun dismissDeleteAccountError() {
+        _deleteAccountState.value = DeleteAccountState.Idle
+    }
+
     private val _importState = MutableStateFlow<ImportState>(ImportState.Idle)
     val importState = _importState.asStateFlow()
 
@@ -183,4 +213,13 @@ class SettingsViewModel @Inject constructor(
     fun clearImportState() {
         _importState.value = ImportState.Idle
     }
+}
+
+/** State of the account-deletion flow. */
+sealed interface DeleteAccountState {
+    data object Idle : DeleteAccountState
+    data object Deleting : DeleteAccountState
+    /** Terminal: the user is signed out and should be sent back to login. */
+    data object Deleted : DeleteAccountState
+    data class Error(val message: String) : DeleteAccountState
 }

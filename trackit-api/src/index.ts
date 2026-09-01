@@ -177,6 +177,52 @@ app.put('/api/me', async (c) => {
   return c.json({ success: true });
 });
 
+/**
+ * Deletes the caller's account and everything belonging to them.
+ *
+ * Anyone storing someone's financial history needs a way to hand it back — this is
+ * the "delete my data" path, and it is also what Google Play requires of any app
+ * with accounts, should TrackIt ever be listed.
+ *
+ * Group data is handled carefully: the caller is removed from every group they are
+ * a member of, but shared splits and settlements are left intact. Deleting those
+ * would silently rewrite other members' balances and make money owed disappear from
+ * their side of the ledger.
+ */
+app.delete('/api/me', async (c) => {
+  const userId = c.get('userId');
+  const db = getDb(c.env);
+
+  const [expenses, budgets] = await Promise.all([
+    db.deleteMany('expenses', { userId }),
+    db.deleteMany('budgets', { userId }),
+  ]);
+
+  // Pull the member entry out of every group rather than deleting the groups:
+  // a group may still be in use by others, and their splits must keep resolving.
+  const groupsResult = (await db.find('groups', { 'members.userId': userId })) as any;
+  const groups = groupsResult?.documents ?? [];
+  for (const group of groups) {
+    await db.updateOne(
+      'groups',
+      { _id: group._id },
+      { $pull: { members: { userId } } },
+      false
+    );
+  }
+
+  await db.deleteMany('users', { _id: userId });
+
+  return c.json({
+    deleted: {
+      expenses: expenses.deletedCount,
+      budgets: budgets.deletedCount,
+      groupsLeft: groups.length,
+    },
+    note: 'Shared splits and settlements are retained so other group members\' balances stay correct.',
+  });
+});
+
 // ── Expense Routes ───────────────────────────────────────────────────────────
 
 app.get('/api/expenses', async (c) => {

@@ -19,6 +19,7 @@ const call = async (path: string, init?: RequestInit) => {
 describe('auth gate on /api/*', () => {
 	const protectedRoutes = [
 		['GET', '/api/me'],
+		['DELETE', '/api/me'],
 		['GET', '/api/expenses'],
 		['POST', '/api/expenses'],
 		['POST', '/api/sync'],

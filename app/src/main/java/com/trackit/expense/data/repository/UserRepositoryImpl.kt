@@ -2,14 +2,39 @@ package com.trackit.expense.data.repository
 
 import com.google.firebase.auth.FirebaseAuth
 import com.trackit.expense.data.remote.api.TrackItApiService
+import com.trackit.expense.data.local.db.TrackItDatabase
 import com.trackit.expense.domain.model.UserProfile
 import com.trackit.expense.domain.repository.UserRepository
+import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 
 class UserRepositoryImpl @Inject constructor(
     private val apiService: TrackItApiService,
-    private val firebaseAuth: FirebaseAuth
+    private val firebaseAuth: FirebaseAuth,
+    private val database: TrackItDatabase
 ) : UserRepository {
+
+    /**
+     * Deletes the account, server first.
+     *
+     * Order matters: the server call needs a valid Firebase ID token, so deleting
+     * the Firebase user first would leave the server-side data permanently
+     * orphaned with no way to authenticate a retry. If the server call fails,
+     * nothing local is touched and the user can try again.
+     */
+    override suspend fun deleteAccount(): Result<Unit> = runCatching {
+        val response = apiService.deleteAccount()
+        if (!response.isSuccessful) {
+            error("Server rejected account deletion (HTTP ${response.code()})")
+        }
+
+        // Local data goes next, so a failure above cannot leave the device wiped
+        // while the server copy survives.
+        database.clearAllTables()
+
+        firebaseAuth.currentUser?.delete()?.await()
+        firebaseAuth.signOut()
+    }
 
     override suspend fun getProfile(): Result<UserProfile> {
         val firebaseUser = firebaseAuth.currentUser

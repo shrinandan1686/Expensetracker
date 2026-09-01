@@ -16,9 +16,11 @@ import io.mockk.coEvery
 import io.mockk.coJustRun
 import io.mockk.coVerify
 import io.mockk.every
+import com.trackit.expense.domain.repository.UserRepository
 import io.mockk.mockk
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Rule
@@ -34,12 +36,15 @@ class SettingsViewModelTest {
     private val exportDataUseCase  = mockk<ExportDataUseCase>()
     private val bulkSmsImportUseCase = mockk<BulkSmsImportUseCase>()
 
+    private val userRepository = mockk<UserRepository>()
+
     private fun buildVm() = SettingsViewModel(
         accountDao           = accountDao,
         categoryDao          = categoryDao,
         settingsRepository   = settingsRepository,
         exportDataUseCase    = exportDataUseCase,
-        bulkSmsImportUseCase = bulkSmsImportUseCase
+        bulkSmsImportUseCase = bulkSmsImportUseCase,
+        userRepository        = userRepository
     )
 
     @Before fun setUp() {
@@ -343,5 +348,49 @@ class SettingsViewModelTest {
         vm.setDynamicColorEnabled(false)
 
         coVerify { settingsRepository.setDynamicColorEnabled(false) }
+    }
+
+    // ── Account deletion ─────────────────────────────────────────────────────
+
+    @Test fun `deleteAccount reaches Deleted on success`() = runTest {
+        coEvery { userRepository.deleteAccount() } returns Result.success(Unit)
+        val vm = buildVm()
+
+        vm.deleteAccount()
+
+        assertThat(vm.deleteAccountState.value).isInstanceOf(DeleteAccountState.Deleted::class.java)
+    }
+
+    @Test fun `deleteAccount surfaces the failure message and stays recoverable`() = runTest {
+        coEvery { userRepository.deleteAccount() } returns
+            Result.failure(RuntimeException("Server rejected account deletion (HTTP 503)"))
+        val vm = buildVm()
+
+        vm.deleteAccount()
+
+        val state = vm.deleteAccountState.value
+        assertThat(state).isInstanceOf(DeleteAccountState.Error::class.java)
+        assertThat((state as DeleteAccountState.Error).message).contains("503")
+
+        // Nothing local is touched when the server call fails, so the user must be
+        // able to dismiss and try again rather than being stuck.
+        vm.dismissDeleteAccountError()
+        assertThat(vm.deleteAccountState.value).isInstanceOf(DeleteAccountState.Idle::class.java)
+    }
+
+    @Test fun `deleteAccount ignores a second call while one is in flight`() = runTest {
+        var calls = 0
+        coEvery { userRepository.deleteAccount() } coAnswers {
+            calls++
+            delay(50)
+            Result.success(Unit)
+        }
+        val vm = buildVm()
+
+        vm.deleteAccount()
+        vm.deleteAccount() // must be a no-op: deleting twice is not idempotent for the user
+
+        advanceUntilIdle()
+        assertThat(calls).isEqualTo(1)
     }
 }

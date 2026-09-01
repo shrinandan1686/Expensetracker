@@ -13,6 +13,7 @@ import com.trackit.expense.data.remote.dto.SyncResponseDto
 import com.trackit.expense.data.remote.dto.UserProfileDto
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.PUT
@@ -49,6 +50,15 @@ interface TrackItApiService {
 
     @PUT("api/me")
     suspend fun updateProfile(@Body body: Map<String, String>): Response<Unit>
+
+    /**
+     * Deletes the signed-in user's account and server-side data.
+     *
+     * Shared group splits and settlements are retained server-side so other
+     * members' balances stay correct; the user is removed from their groups.
+     */
+    @DELETE("api/me")
+    suspend fun deleteAccount(): Response<Unit>
 
     // ──────────────────────────── EXPENSES ──────────────────────────────────
 

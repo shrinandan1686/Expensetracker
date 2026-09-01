@@ -154,7 +154,15 @@ fun NavGraph(
         composable(Screen.Settings.route) {
             com.trackit.expense.presentation.settings.SettingsScreen(
                 onNavigateToReview  = { navController.navigate(Screen.UnloggedExpenses.route) },
-                onNavigateToProfile = { navController.navigate(Screen.Profile.route) }
+                onNavigateToProfile = { navController.navigate(Screen.Profile.route) },
+                onAccountDeleted    = {
+                    // The whole back stack refers to data that no longer exists, so
+                    // clear it rather than letting the user navigate back into it.
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(0) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
             )
         }
 

@@ -535,6 +535,20 @@ guard still works on a machine without it.
 
 ---
 
+## Privacy
+
+[PRIVACY.md](PRIVACY.md) is the user-facing policy, linked from Settings → Privacy
+Policy in the app. The short version: SMS parsing happens entirely on-device, only
+matched transactions become records, nothing is sold or shared with third parties,
+and Settings → Account → Delete Account erases everything.
+
+One deliberate exception worth knowing about: account deletion keeps shared group
+splits and settlements and removes you from those groups instead. Deleting them
+would rewrite other members' balances and make money genuinely owed vanish from
+their ledger.
+
+---
+
 ## Security Model
 
 ### What proves identity
