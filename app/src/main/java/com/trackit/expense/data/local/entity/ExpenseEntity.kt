@@ -30,7 +30,8 @@ import androidx.room.PrimaryKey
         Index("transaction_at"),
         Index("is_synced"),
         Index("is_logged"),
-        Index("category")
+        Index("category"),
+        Index("is_deleted")
     ]
 )
 data class ExpenseEntity(
@@ -82,5 +83,13 @@ data class ExpenseEntity(
     val longitude: Double? = null,
 
     @ColumnInfo(name = "location_address")
-    val locationAddress: String? = null
+    val locationAddress: String? = null,
+
+    /**
+     * Soft-delete tombstone. A deleted expense stays in the table with this set so
+     * the deletion can be pushed to the server; every read query filters it out.
+     * Rows are purged only after the server has acknowledged them.
+     */
+    @ColumnInfo(name = "is_deleted")
+    val isDeleted: Boolean = false
 )

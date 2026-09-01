@@ -28,6 +28,13 @@ val apiBaseUrl: String = run {
         ?: "http://10.0.2.2:8787/"
 }
 
+ksp {
+    // Destination for the Room schema JSON that `exportSchema = true` emits. These
+    // files are committed: they are what makes a migration reviewable, and Room's
+    // migration tests read them.
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 android {
     namespace = "com.trackit.expense"
     compileSdk = 34
@@ -84,6 +91,12 @@ android {
         disable += "StateFlowValueCalledInComposition"
     }
 
+    sourceSets {
+        // MigrationTestHelper reads the exported Room schemas from the test APK's
+        // assets, so the schemas directory has to be an androidTest asset root.
+        getByName("androidTest").assets.srcDirs("$projectDir/schemas")
+    }
+
     testOptions {
         unitTests {
             // SmsParser calls android.util.Log, which is a stub in the JVM test
@@ -98,6 +111,13 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            // The androidTest variant pulls JUnit 5 transitively, and every one of
+            // its jars ships these metadata files. Without excluding them the
+            // instrumented test APK cannot be packaged at all.
+            excludes += "/META-INF/LICENSE*"
+            excludes += "/META-INF/NOTICE*"
+            excludes += "/META-INF/DEPENDENCIES"
+            excludes += "/META-INF/*.kotlin_module"
         }
     }
 }

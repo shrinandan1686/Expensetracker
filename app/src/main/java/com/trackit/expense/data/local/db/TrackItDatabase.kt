@@ -27,10 +27,10 @@ import com.trackit.expense.data.local.entity.SplitEntity
  * | 4       | Added accounts table, updated categories schema, pre-seed logic |
  *
  * ## Migrations
- * See [DatabaseMigrations] for SQL migration objects.
- * In **debug builds**, [fallbackToDestructiveMigration] drops and recreates the
- * database automatically — no migration SQL runs. Replace this with explicit
- * [addMigrations] calls before a production release.
+ * [DatabaseMigrations.ALL] is wired into the builder in [DatabaseModule] and must
+ * cover every consecutive version pair up to [version]. Destructive fallback is
+ * enabled in debug builds only — in release it is off, so a missing migration
+ * fails loudly at open time instead of silently wiping the user's history.
  *
  * ## Usage
  * Built once by Hilt in [DatabaseModule]. Consumers inject the DAO interfaces,
@@ -45,8 +45,10 @@ import com.trackit.expense.data.local.entity.SplitEntity
         GroupEntity::class,
         SplitEntity::class
     ],
-    version = 7,
-    exportSchema = false
+    version = 8,
+    // Exported to app/schemas/ so each migration can be checked against the
+    // schema Room actually expects, instead of being verified only at runtime.
+    exportSchema = true
 )
 abstract class TrackItDatabase : RoomDatabase() {
 

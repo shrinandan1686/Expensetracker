@@ -6,23 +6,17 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 /**
  * Room [Migration] objects for TrackIt database version upgrades.
  *
- * ## How to use
- * Pass these to `Room.databaseBuilder(…).addMigrations(…)` **instead of**
- * `fallbackToDestructiveMigration()` before a production release:
+ * ## Wiring
+ * [ALL] is passed to `Room.databaseBuilder(…).addMigrations(…)` in [DatabaseModule].
+ * Every consecutive version pair from 1 to the current schema version must be
+ * present in [ALL] — a gap makes Room fall back to a destructive migration, which
+ * silently wipes the user's entire expense history.
  *
- * ```kotlin
- * Room.databaseBuilder(context, TrackItDatabase::class.java, DATABASE_NAME)
- *     .addMigrations(
- *         DatabaseMigrations.MIGRATION_1_2,
- *         DatabaseMigrations.MIGRATION_2_3
- *     )
- *     .build()
- * ```
- *
- * ## Development note
- * While `fallbackToDestructiveMigration()` is active in [DatabaseModule], these
- * migration objects are **never executed** — they are preserved here so they can
- * be enabled for a production release without rewriting from scratch.
+ * ## Adding a migration
+ * 1. Bump `version` in [TrackItDatabase].
+ * 2. Add a `MIGRATION_<old>_<new>` object below.
+ * 3. Add it to [ALL].
+ * 4. Check the generated `app/schemas/<version>.json` matches what your SQL builds.
  *
  * ## SQLite limitations
  * - Columns cannot be renamed or retyped directly in SQLite.
@@ -134,6 +128,46 @@ object DatabaseMigrations {
     }
 
     // ────────────────────────────────────────────────────────────────────────
+    // v3 → v4 : Re-introduced the accounts and categories tables
+    //
+    // v2 → v3 dropped `categories` in favour of a denormalised category string on
+    // `expenses`. v4 brought both tables back as user-editable reference data:
+    // accounts for card/UPI labels, categories for the picker in Settings.
+    //
+    // No data to carry over — v3 had no equivalent tables. DatabaseModule's
+    // onCreate callback seeds default categories on a fresh install; an upgrading
+    // install gets them from CategoryDao on first read instead.
+    // ────────────────────────────────────────────────────────────────────────
+
+    val MIGRATION_3_4: Migration = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS accounts (
+                    id         TEXT    NOT NULL PRIMARY KEY,
+                    name       TEXT    NOT NULL,
+                    last_4     TEXT    NOT NULL,
+                    type       TEXT    NOT NULL,
+                    is_default INTEGER NOT NULL,
+                    color_hex  TEXT    NOT NULL,
+                    created_at INTEGER NOT NULL
+                )
+            """.trimIndent())
+
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS categories (
+                    id         TEXT    NOT NULL PRIMARY KEY,
+                    name       TEXT    NOT NULL,
+                    emoji      TEXT    NOT NULL,
+                    is_enabled INTEGER NOT NULL,
+                    is_custom  INTEGER NOT NULL,
+                    sort_order INTEGER NOT NULL,
+                    created_at INTEGER NOT NULL
+                )
+            """.trimIndent())
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
     // v4 → v5 : Added location fields (latitude, longitude, address)
     // ────────────────────────────────────────────────────────────────────────
     val MIGRATION_4_5: Migration = object : Migration(4, 5) {
@@ -183,4 +217,34 @@ object DatabaseMigrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS index_splits_group_id ON splits(group_id)")
         }
     }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // v7 → v8 : Soft-delete tombstones
+    //
+    // Deleting a row outright meant the deletion never reached the server, so the
+    // expense came back on the next pull. is_deleted marks the row as a tombstone:
+    // it stays local (and syncable) until the server has acknowledged it, and every
+    // read query filters it out.
+    // ────────────────────────────────────────────────────────────────────────
+
+    val MIGRATION_7_8: Migration = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE expenses ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_expenses_is_deleted ON expenses(is_deleted)")
+        }
+    }
+
+    /**
+     * Every migration, in order. Consecutive from 1 to the current schema version —
+     * a missing pair means Room destroys and recreates the database instead.
+     */
+    val ALL: Array<Migration> = arrayOf(
+        MIGRATION_1_2,
+        MIGRATION_2_3,
+        MIGRATION_3_4,
+        MIGRATION_4_5,
+        MIGRATION_5_6,
+        MIGRATION_6_7,
+        MIGRATION_7_8
+    )
 }

@@ -51,7 +51,7 @@ interface ExpenseDao {
     suspend fun update(expense: ExpenseEntity)
 
     /** Mark a single expense as reviewed by the user (sets is_logged + logged_at). */
-    @Query("UPDATE expenses SET is_logged = 1, logged_at = :loggedAt WHERE id = :id")
+    @Query("UPDATE expenses SET is_logged = 1, logged_at = :loggedAt WHERE id = :id AND is_deleted = 0")
     suspend fun markLogged(id: String, loggedAt: Long)
 
     /**
@@ -64,20 +64,40 @@ interface ExpenseDao {
 
     // ─────────────────────────────── DELETE ─────────────────────────────────
 
-    @Delete
-    suspend fun delete(expense: ExpenseEntity)
+    /**
+     * Marks an expense as deleted without removing the row.
+     *
+     * The tombstone is what lets the deletion reach the server: it is left
+     * unsynced so [com.trackit.expense.worker.SyncWorker] picks it up, and every
+     * read query below filters it out so the user sees it as gone immediately.
+     * Hard-deleting instead meant the server never learned about it and the
+     * expense reappeared on the next pull.
+     */
+    @Query("UPDATE expenses SET is_deleted = 1, is_synced = 0, updated_at = :updatedAt WHERE id = :id")
+    suspend fun softDeleteById(id: String, updatedAt: Long)
 
+    /**
+     * Permanently removes tombstones the server has already acknowledged.
+     * Called after a successful sync so deleted rows do not accumulate forever.
+     */
+    @Query("DELETE FROM expenses WHERE is_deleted = 1 AND is_synced = 1")
+    suspend fun purgeSyncedTombstones(): Int
+
+    /** Hard delete. Only for tests and for tombstones already confirmed by the server. */
     @Query("DELETE FROM expenses WHERE id = :id")
     suspend fun deleteById(id: String)
+
+    @Delete
+    suspend fun delete(expense: ExpenseEntity)
 
     // ─────────────────────────────── SELECT — ALL ────────────────────────────
 
     /** All expenses sorted by transaction time, newest first. */
-    @Query("SELECT * FROM expenses ORDER BY transaction_at DESC")
+    @Query("SELECT * FROM expenses WHERE is_deleted = 0 ORDER BY transaction_at DESC")
     fun getAll(): Flow<List<ExpenseEntity>>
 
     /** A single expense by UUID. Emits null if the record is not found. */
-    @Query("SELECT * FROM expenses WHERE id = :id LIMIT 1")
+    @Query("SELECT * FROM expenses WHERE id = :id AND is_deleted = 0 LIMIT 1")
     fun getById(id: String): Flow<ExpenseEntity?>
 
     // ─────────────────────────────── SELECT — FILTERED ──────────────────────
@@ -88,7 +108,7 @@ interface ExpenseDao {
      */
     @Query("""
         SELECT * FROM expenses
-        WHERE is_logged = 0
+        WHERE is_logged = 0 AND is_deleted = 0
         ORDER BY transaction_at DESC
     """)
     fun getUnlogged(): Flow<List<ExpenseEntity>>
@@ -100,6 +120,7 @@ interface ExpenseDao {
     @Query("""
         SELECT * FROM expenses
         WHERE strftime('%Y-%m', datetime(transaction_at / 1000, 'unixepoch')) = :month
+          AND is_deleted = 0
         ORDER BY transaction_at DESC
     """)
     fun getByMonth(month: String): Flow<List<ExpenseEntity>>
@@ -111,6 +132,7 @@ interface ExpenseDao {
     @Query("""
         SELECT * FROM expenses
         WHERE transaction_at >= :startMs AND transaction_at < :endMs
+          AND is_deleted = 0
         ORDER BY transaction_at DESC
     """)
     fun getByDateRange(startMs: Long, endMs: Long): Flow<List<ExpenseEntity>>
@@ -118,7 +140,7 @@ interface ExpenseDao {
     /** Expenses matching [category] exactly. */
     @Query("""
         SELECT * FROM expenses
-        WHERE category = :category
+        WHERE category = :category AND is_deleted = 0
         ORDER BY transaction_at DESC
     """)
     fun getByCategory(category: String): Flow<List<ExpenseEntity>>
@@ -134,6 +156,7 @@ interface ExpenseDao {
         SELECT COALESCE(SUM(amount), 0.0) FROM expenses
         WHERE strftime('%Y-%m', datetime(transaction_at / 1000, 'unixepoch')) = :month
           AND is_logged = 1
+          AND is_deleted = 0
     """)
     fun getTotalByMonth(month: String): Flow<Double>
 
@@ -141,6 +164,7 @@ interface ExpenseDao {
         SELECT COALESCE(SUM(amount), 0.0) FROM expenses
         WHERE strftime('%Y-%m', datetime(transaction_at / 1000, 'unixepoch')) = :month
           AND is_logged = 1
+          AND is_deleted = 0
     """)
     suspend fun getTotalByMonthOneShot(month: String): Double
 
@@ -152,6 +176,7 @@ interface ExpenseDao {
         SELECT category, COALESCE(SUM(amount), 0.0) AS total FROM expenses
         WHERE strftime('%Y-%m', datetime(transaction_at / 1000, 'unixepoch')) = :month
           AND is_logged = 1
+          AND is_deleted = 0
         GROUP BY category
         ORDER BY total DESC
     """)
@@ -165,6 +190,7 @@ interface ExpenseDao {
         SELECT category, COALESCE(SUM(amount), 0.0) AS total FROM expenses
         WHERE transaction_at >= :startMs AND transaction_at < :endMs
           AND is_logged = 1
+          AND is_deleted = 0
         GROUP BY category
         ORDER BY total DESC
     """)
@@ -177,6 +203,15 @@ interface ExpenseDao {
      * Returns all records not yet confirmed by the server — called inside
      * [com.trackit.expense.worker.SyncWorker.doWork].
      */
+    /**
+     * One-shot lookup used by the sync pull's conflict check. Includes tombstones —
+     * the pull needs to know a row exists locally even if it is already deleted.
+     */
+    @Query("SELECT * FROM expenses WHERE id = :id LIMIT 1")
+    suspend fun getByIdOnce(id: String): ExpenseEntity?
+
+    // Deliberately includes tombstones (is_deleted = 1): an unsynced deletion is
+    // precisely what has to be pushed to the server.
     @Query("SELECT * FROM expenses WHERE is_synced = 0")
     suspend fun getUnsynced(): List<ExpenseEntity>
 
@@ -193,7 +228,7 @@ interface ExpenseDao {
      */
     @Query("""
         SELECT * FROM expenses
-        WHERE is_logged = 1
+        WHERE is_logged = 1 AND is_deleted = 0
         ORDER BY transaction_at DESC
         LIMIT :limit
     """)
@@ -223,6 +258,7 @@ interface ExpenseDao {
         WHERE LOWER(merchant) = LOWER(:merchant)
           AND amount BETWEEN :amountMin AND :amountMax
           AND transaction_at BETWEEN :startTime AND :endTime
+          AND is_deleted = 0
         ORDER BY transaction_at DESC
         LIMIT 5
     """)
@@ -245,6 +281,7 @@ interface ExpenseDao {
         SELECT COUNT(*) > 0 FROM expenses
         WHERE amount = :amount
           AND transaction_at BETWEEN :timeMin AND :timeMax
+          AND is_deleted = 0
     """)
     suspend fun existsByAmountAndTime(amount: Double, timeMin: Long, timeMax: Long): Boolean
 
@@ -262,6 +299,7 @@ interface ExpenseDao {
         FROM expenses
         WHERE strftime('%Y-%m', datetime(transaction_at / 1000, 'unixepoch')) = :month
           AND is_logged = 1
+          AND is_deleted = 0
         GROUP BY day
         ORDER BY day ASC
     """)

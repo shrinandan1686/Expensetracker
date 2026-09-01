@@ -9,6 +9,7 @@ import com.trackit.expense.data.local.dao.CategoryDao
 import com.trackit.expense.data.local.dao.ExpenseDao
 import com.trackit.expense.data.local.dao.GroupDao
 import com.trackit.expense.data.local.dao.SplitDao
+import com.trackit.expense.BuildConfig
 import com.trackit.expense.data.local.db.DatabaseMigrations
 import com.trackit.expense.data.local.db.TrackItDatabase
 import dagger.Module
@@ -30,16 +31,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * Installed in [SingletonComponent] so all provided objects are app-scoped singletons.
  *
  * ## Migration strategy
- * Currently uses [fallbackToDestructiveMigration] for development convenience —
- * the database is recreated from scratch whenever the schema version increments.
- *
- * **Before any production release**, replace the fallback with explicit migrations:
- * ```kotlin
- * .addMigrations(
- *     DatabaseMigrations.MIGRATION_1_2,
- *     DatabaseMigrations.MIGRATION_2_3
- * )
- * ```
+ * [DatabaseMigrations.ALL] supplies an explicit migration for every consecutive
+ * version pair. Destructive fallback is enabled in **debug builds only**, so a
+ * release build with a missing migration fails at open time rather than dropping
+ * the user's expense history without telling anyone.
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -67,7 +62,13 @@ object DatabaseModule {
                 }
             }
         })
-        .fallbackToDestructiveMigration()
+        .addMigrations(*DatabaseMigrations.ALL)
+        .apply {
+            // Debug only. In a release build a missing migration must fail loudly at
+            // open time — the alternative is Room silently dropping every expense
+            // the user has ever recorded.
+            if (BuildConfig.DEBUG) fallbackToDestructiveMigration()
+        }
         .build()
 
     @Provides

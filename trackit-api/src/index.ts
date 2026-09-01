@@ -185,14 +185,29 @@ app.get('/api/expenses', async (c) => {
   const page = positiveInt(c.req.query('page'), 1, 10_000);
   const limit = positiveInt(c.req.query('limit'), 50, MAX_PAGE_SIZE);
 
+  // Incremental pull watermark. The client sends the updatedAt of the last row it
+  // successfully stored, so a routine sync transfers only what changed.
+  const updatedSinceRaw = Number.parseInt(c.req.query('updated_since') ?? '', 10);
+  const updatedSince = Number.isFinite(updatedSinceRaw) && updatedSinceRaw > 0 ? updatedSinceRaw : null;
+
+  // Tombstones are only useful to a syncing client, which needs them to apply a
+  // deletion made on another device. Anything else asking for a list wants the
+  // live rows, so deleted ones are excluded by default.
+  const includeDeleted = c.req.query('include_deleted') === 'true';
+
   const filter: any = { userId };
   if (month) filter.month = month;
+  if (updatedSince !== null) filter.updatedAt = { $gt: updatedSince };
+  if (!includeDeleted) filter.isDeleted = { $ne: true };
 
   const db = getDb(c.env);
+  // Sorted by updatedAt for a pull so pagination is stable against the same
+  // watermark the client is advancing; by transactionAt otherwise, which is the
+  // order a list view wants.
   const result = await db.find('expenses', filter, {
     limit,
     skip: (page - 1) * limit,
-    sort: { transactionAt: -1 }
+    sort: updatedSince !== null ? { updatedAt: 1 } : { transactionAt: -1 }
   });
 
   return c.json(result);
@@ -236,6 +251,9 @@ app.post('/api/sync', async (c) => {
     const { _id, userId: _ignoredUserId, ...e } = raw;
     const incomingUpdatedAt =
       typeof e.updatedAt === 'number' && Number.isFinite(e.updatedAt) ? e.updatedAt : 0;
+    // A tombstone is stored, not removed: other devices have to be able to learn
+    // about the deletion on their next pull, which a hard delete would hide.
+    e.isDeleted = e.isDeleted === true;
 
     return {
       filter: { id: e.id, userId },
@@ -259,7 +277,15 @@ app.post('/api/sync', async (c) => {
   });
 
   const results = await db.bulkUpsert('expenses', upserts);
-  return c.json({ synced: results.length });
+
+  // Field names match what the client actually reads (ExpenseDto.SyncResponseDto).
+  // The previous `{ synced: N }` matched nothing, so the client fell back to
+  // assuming every expense in the batch had persisted.
+  return c.json({
+    synced_ids: upserts.map((u) => u.filter.id as string),
+    failed_ids: [],
+    message: `Synced ${results.length} expense(s)`,
+  });
 });
 
 // ── Groups ───────────────────────────────────────────────────────────────────
@@ -493,7 +519,9 @@ app.get('/api/analytics/summary', async (c) => {
 
   const db = getDb(c.env);
   const pipeline = [
-    { $match: { userId, month } },
+    // isDeleted is excluded here too, or a deleted expense would keep showing up
+    // in the month's total after the client has stopped displaying it.
+    { $match: { userId, month, isDeleted: { $ne: true } } },
     {
       $group: {
         _id: null,

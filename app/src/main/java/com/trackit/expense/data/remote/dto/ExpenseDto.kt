@@ -1,6 +1,7 @@
 package com.trackit.expense.data.remote.dto
 
 import com.google.gson.annotations.SerializedName
+import com.trackit.expense.data.local.entity.ExpenseEntity
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Expense DTO
@@ -27,7 +28,12 @@ data class ExpenseDto(
     @SerializedName("transaction_at") val transactionAt: Long,
     @SerializedName("logged_at")      val loggedAt: Long?,
     @SerializedName("created_at")     val createdAt: Long,
-    @SerializedName("updated_at")     val updatedAt: Long = createdAt
+    @SerializedName("updated_at")     val updatedAt: Long = createdAt,
+    /**
+     * Soft-delete tombstone. Sent so the server learns about deletions, and
+     * received so a deletion made on another device is applied locally.
+     */
+    @SerializedName("is_deleted")     val isDeleted: Boolean = false
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -57,4 +63,38 @@ data class SyncResponseDto(
     @SerializedName("synced_ids")   val syncedIds: List<String> = emptyList(),
     @SerializedName("failed_ids")   val failedIds: List<String> = emptyList(),
     @SerializedName("message")      val message: String         = ""
+)
+
+/**
+ * Response from `GET /api/expenses`.
+ *
+ * [documents] mirrors the MongoDB driver's own result shape, which is what the
+ * Worker returns. Tombstoned expenses are included when `include_deleted=true`
+ * so a pull can apply deletions made on another device.
+ */
+data class ExpenseListResponseDto(
+    @SerializedName("documents") val documents: List<ExpenseDto> = emptyList()
+)
+
+/**
+ * Maps a server expense onto a Room entity for the sync pull.
+ *
+ * @param isSynced marks the row as already confirmed by the server, so the next
+ *        push does not immediately send back what was just pulled.
+ */
+fun ExpenseDto.toEntity(isSynced: Boolean = true): ExpenseEntity = ExpenseEntity(
+    id            = id,
+    amount        = amount,
+    merchant      = merchant,
+    category      = category,
+    account       = account,
+    notes         = notes,
+    rawSms        = rawSms,
+    isLogged      = isLogged,
+    isSynced      = isSynced,
+    transactionAt = transactionAt,
+    loggedAt      = loggedAt,
+    createdAt     = createdAt,
+    updatedAt     = updatedAt,
+    isDeleted     = isDeleted
 )

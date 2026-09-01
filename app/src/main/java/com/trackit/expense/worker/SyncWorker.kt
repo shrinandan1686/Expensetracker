@@ -17,6 +17,7 @@ import androidx.work.workDataOf
 import com.trackit.expense.data.local.dao.ExpenseDao
 import com.trackit.expense.data.remote.api.TrackItApiService
 import com.trackit.expense.data.remote.dto.ExpenseDto
+import com.trackit.expense.data.remote.dto.toEntity
 import com.trackit.expense.data.remote.dto.SyncRequestDto
 import com.trackit.expense.util.SyncStateStore
 import dagger.assisted.Assisted
@@ -66,14 +67,25 @@ class SyncWorker @AssistedInject constructor(
         val firstFailed = inputData.getLong(KEY_FIRST_FAILED_AT, 0L)
         Log.d(TAG, "SyncWorker started (attempt $attempt)")
 
-        // ── 1. Nothing to sync ────────────────────────────────────────────────
+        // ── 1. Nothing to push — but still pull ───────────────────────────────
+        // A device with no local changes is exactly the case that needs a pull:
+        // a fresh install after a reinstall has an empty database and everything
+        // to restore.
         val unsynced = expenseDao.getUnsynced()
         if (unsynced.isEmpty()) {
-            Log.d(TAG, "Nothing to sync — success.")
-            syncStateStore.clearFailure()
-            return Result.success()
+            Log.d(TAG, "Nothing to push.")
+            val pulled = runCatching { pullFromServer() }
+                .onFailure { Log.w(TAG, "Pull failed: ${it.message}") }
+                .getOrNull()
+            return if (pulled == null) {
+                scheduleRetry(attempt, firstFailed)
+                Result.failure()
+            } else {
+                syncStateStore.clearFailure()
+                Result.success()
+            }
         }
-        Log.i(TAG, "Found ${unsynced.size} unsynced expense(s).")
+        Log.i(TAG, "Found ${unsynced.size} unsynced expense(s) to push.")
 
         // ── 2. Map to DTOs ────────────────────────────────────────────────────
         val dtos = unsynced.map { e ->
@@ -106,7 +118,16 @@ class SyncWorker @AssistedInject constructor(
                 }
 
                 val failedCount = body?.failedIds?.size ?: 0
-                Log.i(TAG, "Sync done — ${syncedIds.size} synced, $failedCount failed.")
+                Log.i(TAG, "Push done — ${syncedIds.size} synced, $failedCount failed.")
+
+                // Tombstones the server has acknowledged can finally go. Done before
+                // the pull so a deleted row is not immediately re-fetched.
+                val purged = expenseDao.purgeSyncedTombstones()
+                if (purged > 0) Log.d(TAG, "Purged $purged acknowledged tombstone(s).")
+
+                runCatching { pullFromServer() }
+                    .onFailure { Log.w(TAG, "Push succeeded but pull failed: ${it.message}") }
+
                 syncStateStore.clearFailure()
                 Result.success()
 
@@ -138,6 +159,73 @@ class SyncWorker @AssistedInject constructor(
             Log.e(TAG, "Unexpected error during sync", e)
             Result.failure()
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PULL
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Pulls expenses changed since the last successful pull and applies them locally.
+     *
+     * This is what makes the sync bidirectional. Without it the server accumulated
+     * data nothing ever read back, so reinstalling the app looked like total data
+     * loss and a second device saw nothing.
+     *
+     * Conflict rule matches the server's: an incoming row wins only if its
+     * `updated_at` is newer than the local row's, so a local edit that has not been
+     * pushed yet is never clobbered. Rows still waiting to be pushed are skipped
+     * entirely.
+     *
+     * @return the number of rows applied.
+     */
+    private suspend fun pullFromServer(): Int {
+        val since = syncStateStore.lastPullAt
+        var page = 0
+        var applied = 0
+        var maxUpdatedAt = since
+
+        while (page < MAX_PULL_PAGES) {
+            page++
+            val response = apiService.getExpenses(
+                updatedSince = since,
+                includeDeleted = true,
+                page = page,
+                limit = PULL_PAGE_SIZE
+            )
+            if (!response.isSuccessful) {
+                throw IOException("Pull failed with HTTP ${response.code()}")
+            }
+
+            val documents = response.body()?.documents.orEmpty()
+            if (documents.isEmpty()) break
+
+            for (dto in documents) {
+                val local = expenseDao.getByIdOnce(dto.id)
+
+                // Never overwrite a local change that has not reached the server.
+                if (local != null && !local.isSynced) continue
+                if (local != null && local.updatedAt >= dto.updatedAt) continue
+
+                if (dto.isDeleted) {
+                    // Deleted elsewhere and already acknowledged by the server, so
+                    // there is nothing left to push — remove it outright.
+                    if (local != null) expenseDao.deleteById(dto.id)
+                } else {
+                    expenseDao.insert(dto.toEntity(isSynced = true))
+                }
+                applied++
+                if (dto.updatedAt > maxUpdatedAt) maxUpdatedAt = dto.updatedAt
+            }
+
+            if (documents.size < PULL_PAGE_SIZE) break
+        }
+
+        // Advanced only after the rows are committed, so an interrupted pull retries
+        // the same window instead of skipping it.
+        if (maxUpdatedAt > since) syncStateStore.lastPullAt = maxUpdatedAt
+        if (applied > 0) Log.i(TAG, "Pull applied $applied change(s) from server.")
+        return applied
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -200,6 +288,16 @@ class SyncWorker @AssistedInject constructor(
         private val MAX_RETRY_DURATION_MS = TimeUnit.HOURS.toMillis(24)
 
         private const val SQLITE_IN_LIMIT = 900
+
+        /** Server clamps `limit` to 200; match it so pages are never short by accident. */
+        private const val PULL_PAGE_SIZE = 200
+
+        /**
+         * Ceiling on pages fetched per run (200 × 25 = 5,000 expenses). Bounds a
+         * single worker invocation so a large history is restored across several
+         * runs rather than one that gets killed for running too long.
+         */
+        private const val MAX_PULL_PAGES = 25
 
         private val networkConstraint = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)

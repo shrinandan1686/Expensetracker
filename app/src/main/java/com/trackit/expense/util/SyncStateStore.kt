@@ -44,6 +44,18 @@ class SyncStateStore @Inject constructor(
     /** True if sync has been definitively failed (cap exceeded). */
     val isSyncFailed: Boolean get() = syncFailedAt > 0L
 
+    /**
+     * `updated_at` watermark of the last successful pull from the server.
+     *
+     * 0 means "never pulled", which makes the next sync do a full restore — that is
+     * what recovers a user's history after a reinstall. Only advanced after the
+     * pulled rows have actually been written to Room, so a crash mid-pull retries
+     * the same window rather than skipping it.
+     */
+    var lastPullAt: Long
+        get() = prefs.getLong(KEY_LAST_PULL_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_PULL_AT, value).apply()
+
     // ─────────────────────────────────────────────────────────────────────────
     // Mutations
     // ─────────────────────────────────────────────────────────────────────────
@@ -83,5 +95,6 @@ class SyncStateStore @Inject constructor(
         private const val KEY_SYNC_FAILED_AT  = "sync_failed_at"
         private const val KEY_FIRST_FAILED_AT = "first_failed_at"
         private const val KEY_RETRY_ATTEMPT   = "retry_attempt"
+        private const val KEY_LAST_PULL_AT    = "last_pull_at"
     }
 }

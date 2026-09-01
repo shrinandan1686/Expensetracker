@@ -4,6 +4,7 @@ import com.trackit.expense.data.remote.dto.BalancesResponseDto
 import com.trackit.expense.data.remote.dto.CreateSettlementRequestDto
 import com.trackit.expense.data.remote.dto.CreateSplitRequestDto
 import com.trackit.expense.data.remote.dto.ExpenseDto
+import com.trackit.expense.data.remote.dto.ExpenseListResponseDto
 import com.trackit.expense.data.remote.dto.GroupDto
 import com.trackit.expense.data.remote.dto.SettlementResponseDto
 import com.trackit.expense.data.remote.dto.SplitDto
@@ -52,16 +53,27 @@ interface TrackItApiService {
     // ──────────────────────────── EXPENSES ──────────────────────────────────
 
     /**
-     * Fetch paginated expenses from the server.
-     * Used for initial device setup or data restoration after reinstall.
+     * Fetch expenses from the server, newest first.
+     *
+     * Used by [com.trackit.expense.worker.SyncWorker]'s pull phase — after a
+     * reinstall this is what restores the user's history, and on a second device
+     * it is what makes the data show up at all.
+     *
+     * @param updatedSince Only return expenses with `updated_at` greater than this.
+     *        Pass 0 for a full restore; the worker passes the last successful pull
+     *        watermark for incremental syncs.
+     * @param includeDeleted Include tombstones, so a deletion made on another
+     *        device is applied locally instead of the row lingering forever.
      * @param page 1-based page number.
-     * @param limit Number of records per page (max 100 recommended).
+     * @param limit Records per page. The server clamps this to 200.
      */
     @GET("api/expenses")
     suspend fun getExpenses(
+        @Query("updated_since")  updatedSince: Long = 0L,
+        @Query("include_deleted") includeDeleted: Boolean = true,
         @Query("page")  page: Int  = 1,
-        @Query("limit") limit: Int = 50
-    ): Response<List<ExpenseDto>>
+        @Query("limit") limit: Int = 200
+    ): Response<ExpenseListResponseDto>
 
     // ──────────────────────────── SYNC ──────────────────────────────────────
 

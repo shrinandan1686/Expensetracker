@@ -85,9 +85,17 @@ class ExpenseRepositoryImpl @Inject constructor(
         WidgetRefreshWorker.enqueueNow(workManager)
     }
 
+    /**
+     * Soft-deletes the expense and schedules a sync.
+     *
+     * The row is kept as a tombstone so the deletion can be pushed; read queries
+     * filter it out, so the expense disappears from the UI right away. A hard
+     * delete here meant the server never learned about it and the expense came
+     * back on the next pull.
+     */
     override suspend fun delete(id: String): Result<Unit> = runCatching {
-        expenseDao.deleteById(id)
-        // NB: deletions are not currently propagated to the server
+        expenseDao.softDeleteById(id, System.currentTimeMillis())
+        enqueueSyncWork()
     }
 
     override suspend fun markLogged(
