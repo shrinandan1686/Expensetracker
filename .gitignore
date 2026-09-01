@@ -1,3 +1,9 @@
+# Signing — losing the release keystore means no existing install can ever be
+# updated again, so back it up somewhere outside this repo.
+*.jks
+*.keystore
+keystore.properties
+
 # Android/Gradle
 .gradle/
 build/

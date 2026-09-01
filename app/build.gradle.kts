@@ -10,22 +10,58 @@ plugins {
 }
 
 /**
- * API base URL is read from `local.properties` (untracked) so no developer's LAN
- * address or private deployment URL ever lands in git. Falls back to the Android
- * emulator's host alias, which is what a fresh clone needs.
- *
- *   trackit.api.baseUrl=http://192.168.1.42:8787/     # physical device on your LAN
- *   trackit.api.baseUrl=https://<worker>.workers.dev/ # deployed backend
+ * Build-time config read from `local.properties` (untracked) or a Gradle property,
+ * so no developer's LAN address, deployment URL or keystore password lands in git.
  */
-val apiBaseUrl: String = run {
-    val localProps = Properties()
-    val localFile = rootProject.file("local.properties")
-    if (localFile.exists()) {
-        localFile.inputStream().use { localProps.load(it) }
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
+fun buildConfigProperty(name: String): String? =
+    localProps.getProperty(name)
+        ?: providers.gradleProperty(name).orNull
+        ?: System.getenv(name.replace('.', '_').uppercase())
+
+/**
+ * Debug base URL. Defaults to the emulator's host alias, which is what a fresh
+ * clone needs; set `trackit.api.baseUrl` for a physical device on your LAN.
+ */
+val debugApiBaseUrl: String =
+    buildConfigProperty("trackit.api.baseUrl") ?: "http://10.0.2.2:8787/"
+
+/**
+ * Release base URL, deliberately with no default.
+ *
+ * A release build that silently inherited the debug default would ship pointing at
+ * http://10.0.2.2:8787 — unreachable off an emulator, and blocked outright because
+ * release builds have no cleartext permission. Every network call would fail with
+ * no obvious cause. Failing the build is the honest outcome.
+ *
+ * Set `trackit.api.baseUrl.release` in local.properties, as a Gradle property, or
+ * via the TRACKIT_API_BASEURL_RELEASE environment variable in CI.
+ */
+val releaseApiBaseUrl: String? = buildConfigProperty("trackit.api.baseUrl.release")
+
+fun validatedReleaseUrl(): String {
+    val url = releaseApiBaseUrl
+        ?: throw GradleException(
+            "trackit.api.baseUrl.release is not set — a release build has no backend URL.\n" +
+                "Add it to local.properties, e.g.\n" +
+                "  trackit.api.baseUrl.release=https://trackit-api.<subdomain>.workers.dev/\n" +
+                "or set TRACKIT_API_BASEURL_RELEASE in the environment."
+        )
+    if (!url.startsWith("https://")) {
+        throw GradleException(
+            "trackit.api.baseUrl.release must use https:// (got: $url).\n" +
+                "Release builds enforce Android's HTTPS-only policy, so a cleartext URL " +
+                "would fail every request at runtime."
+        )
     }
-    localProps.getProperty("trackit.api.baseUrl")
-        ?: providers.gradleProperty("trackit.api.baseUrl").orNull
-        ?: "http://10.0.2.2:8787/"
+    if (!url.endsWith("/")) {
+        throw GradleException("trackit.api.baseUrl.release must end with a trailing slash (Retrofit requires it): $url")
+    }
+    return url
 }
 
 ksp {
@@ -46,11 +82,44 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
-
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
+        }
+    }
+
+    /**
+     * Release signing, configured only when a keystore is actually available.
+     *
+     * TrackIt is distributed as a signed APK via GitHub Releases, so the signing key
+     * is the user's install identity: sign an update with a different key and Android
+     * refuses to install it over the existing app. Keep `trackit-release.jks` and its
+     * passwords out of the repo (both are gitignored) and back the keystore up —
+     * losing it means no existing install can ever be updated again.
+     *
+     * Configure in local.properties:
+     *   trackit.keystore.path=/absolute/path/to/trackit-release.jks
+     *   trackit.keystore.password=...
+     *   trackit.key.alias=trackit
+     *   trackit.key.password=...
+     *
+     * or via TRACKIT_KEYSTORE_PATH / TRACKIT_KEYSTORE_PASSWORD / TRACKIT_KEY_ALIAS /
+     * TRACKIT_KEY_PASSWORD in CI.
+     */
+    val keystorePath = buildConfigProperty("trackit.keystore.path")
+    val hasReleaseKeystore = keystorePath != null && file(keystorePath).exists()
+
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = file(keystorePath!!)
+                storePassword = buildConfigProperty("trackit.keystore.password")
+                keyAlias = buildConfigProperty("trackit.key.alias")
+                keyPassword = buildConfigProperty("trackit.key.password")
+                // v1 too: minSdk is 26, and some sideload paths still check it.
+                enableV1Signing = true
+                enableV2Signing = true
+            }
         }
     }
 
@@ -62,9 +131,30 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+
+            // Not validated here: buildTypes is configured on every invocation, so
+            // throwing would break assembleDebug too. verifyReleaseConfig does the
+            // validation and assembleRelease depends on it, so no release APK is ever
+            // produced with this placeholder — which is deliberately unreachable
+            // rather than a working-looking default.
+            val releaseUrl = releaseApiBaseUrl ?: "https://release-url-not-configured.invalid/"
+            buildConfigField("String", "API_BASE_URL", "\"$releaseUrl\"")
+
+            if (hasReleaseKeystore) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                logger.warn(
+                    "No release keystore configured (trackit.keystore.path) — the release " +
+                        "APK will be unsigned and cannot be installed. See app/build.gradle.kts."
+                )
+            }
         }
         debug {
             isDebuggable = true
+            // No applicationIdSuffix here: google-services.json only registers
+            // com.trackit.expense, and the Firebase API key is restricted to that
+            // package plus signing cert, so a suffixed id breaks Google Sign-In.
+            buildConfigField("String", "API_BASE_URL", "\"$debugApiBaseUrl\"")
         }
     }
 
@@ -119,6 +209,36 @@ android {
             excludes += "/META-INF/DEPENDENCIES"
             excludes += "/META-INF/*.kotlin_module"
         }
+    }
+}
+
+/**
+ * Fails a release build whose backend URL is missing or unusable.
+ *
+ * Deliberately a task rather than a check inside `buildTypes`: that block is
+ * configured on every invocation, so throwing there would break `assembleDebug`
+ * too. Wired in `afterEvaluate` because AGP registers assembleRelease/bundleRelease
+ * after this script is configured, so a `tasks.matching {}` filter set up here never
+ * sees them.
+ */
+val verifyReleaseConfig = tasks.register("verifyReleaseConfig") {
+    group = "verification"
+    description = "Checks that the release backend URL is set and uses https."
+    doLast {
+        val url = validatedReleaseUrl()
+        logger.lifecycle("Release backend URL: $url")
+        if (buildConfigProperty("trackit.keystore.path") == null) {
+            logger.warn(
+                "WARNING: no release keystore configured (trackit.keystore.path) — " +
+                    "this APK will be unsigned and cannot be installed."
+            )
+        }
+    }
+}
+
+afterEvaluate {
+    listOf("assembleRelease", "bundleRelease").forEach { name ->
+        tasks.findByName(name)?.dependsOn(verifyReleaseConfig)
     }
 }
 

@@ -447,6 +447,64 @@ npx wrangler secret put MONGODB_URI
 
 ---
 
+## Building a Release
+
+TrackIt is distributed as a **signed APK via GitHub Releases**, not through the Play
+Store. It needs `READ_SMS` / `RECEIVE_SMS` to parse bank messages, and automatic
+expense tracking is not one of Google's approved use cases for those restricted
+permissions, so a Play submission would be rejected on policy rather than quality.
+
+### One-time: create a signing key
+
+```bash
+keytool -genkeypair -v -keystore trackit-release.jks \
+  -keyalg RSA -keysize 2048 -validity 10000 -alias trackit
+```
+
+> **Back this file up outside the repo.** Android only allows an update if it is
+> signed with the same key. Lose the keystore and no existing install can ever be
+> updated again — users would have to uninstall (losing local data) and reinstall.
+> `*.jks` is gitignored.
+
+### Configure the build
+
+Add to `local.properties` (untracked):
+
+```properties
+trackit.api.baseUrl.release=https://<your-worker>.workers.dev/
+trackit.keystore.path=/absolute/path/to/trackit-release.jks
+trackit.keystore.password=...
+trackit.key.alias=trackit
+trackit.key.password=...
+```
+
+```bash
+./gradlew :app:assembleRelease
+```
+
+`verifyReleaseConfig` runs first and **fails the build** if the release URL is
+missing, is not `https://`, or has no trailing slash. Without that check a release
+would silently inherit the debug default of `http://10.0.2.2:8787/` — unreachable
+off an emulator and blocked outright by the HTTPS-only policy release builds get,
+so every request would fail with no visible cause.
+
+### Automated releases
+
+Pushing a `v*` tag runs `.github/workflows/release.yml`, which builds the APK,
+verifies it is actually signed with `apksigner`, and attaches it to the GitHub
+release. It needs these repository secrets:
+
+| Secret | What it holds |
+|---|---|
+| `GOOGLE_SERVICES_JSON` | Contents of `app/google-services.json` (gitignored) |
+| `RELEASE_KEYSTORE_BASE64` | `base64 -i trackit-release.jks` |
+| `RELEASE_KEYSTORE_PASSWORD` | Keystore password |
+| `RELEASE_KEY_ALIAS` | Key alias (`trackit`) |
+| `RELEASE_KEY_PASSWORD` | Key password |
+| `TRACKIT_API_BASEURL_RELEASE` | Deployed backend URL, `https://…/` |
+
+---
+
 ## CI & Secret Scanning
 
 `.github/workflows/ci.yml` runs on every push to `main` and every pull request:
