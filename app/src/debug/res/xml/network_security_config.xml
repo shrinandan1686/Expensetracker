@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Debug source set only — never merged into a release build.
+
+    Cleartext is permitted so the app can talk to a local `wrangler dev` server
+    (http://10.0.2.2:8787 from the emulator, or your machine's LAN IP from a
+    physical device). Release builds keep Android's default HTTPS-only policy,
+    so the deployed Worker must be reached over TLS.
+
+    Set your own address via `trackit.api.baseUrl` in local.properties — no
+    developer's LAN address is committed to this repo.
+-->
 <network-security-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <!-- Local wrangler dev server -->
-        <domain includeSubdomains="true">192.168.31.185</domain>
-        <domain includeSubdomains="true">10.0.2.2</domain>
-        <domain includeSubdomains="true">localhost</domain>
-    </domain-config>
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

@@ -1,6 +1,7 @@
 package com.trackit.expense.di
 
 import com.google.gson.Gson
+import com.trackit.expense.BuildConfig
 import com.trackit.expense.data.remote.api.TrackItApiService
 import com.trackit.expense.data.remote.interceptor.AuthInterceptor
 import dagger.Module
@@ -18,16 +19,29 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
 
-    // Local wrangler dev: "http://192.168.31.185:8787/"
-    // Deployed:          "https://<your-worker>.workers.dev/"
-    private const val BASE_URL = "http://192.168.31.185:8787/"
+    // Supplied at build time from `trackit.api.baseUrl` in local.properties (see
+    // README → Local Development Setup). Kept out of source control so the repo
+    // never carries anyone's LAN address or deployment URL.
+    private val BASE_URL = BuildConfig.API_BASE_URL
     private const val TIMEOUT_SECS  = 30L
 
+    /**
+     * Body-level logging is debug-only: in a release build it would write every
+     * request body — and the `Authorization: Bearer <Firebase ID token>` header —
+     * into logcat, where any crash reporter or log collector could pick it up.
+     * The header is redacted even in debug so a shared logcat never leaks a
+     * usable token.
+     */
     @Provides
     @Singleton
     fun provideLoggingInterceptor(): HttpLoggingInterceptor =
         HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
+            level = if (BuildConfig.DEBUG) {
+                HttpLoggingInterceptor.Level.BODY
+            } else {
+                HttpLoggingInterceptor.Level.NONE
+            }
+            redactHeader("Authorization")
         }
 
     @Provides

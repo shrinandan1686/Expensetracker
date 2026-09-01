@@ -8,6 +8,7 @@ local.properties
 *.keystore
 bin/
 gen/
+.kotlin/
 
 # IntelliJ/Android Studio
 .idea/
@@ -16,18 +17,31 @@ gen/
 *.ipr
 out/
 
+# Firebase — contains your project's API key, OAuth client IDs and signing
+# cert hashes. Each developer generates their own from the Firebase console.
+# See FIREBASE_SETUP.md; app/google-services.json.template shows the shape.
+google-services.json
+!google-services.json.template
+
 # Node/Wrangler (for trackit-api)
 node_modules/
 .wrangler/
 .dev.vars
+.dev.vars.*
+!.dev.vars.example
+.env
+.env.*
+!.env.example
 dist/
 .output/
 
 # macOS
 .DS_Store
 
-# Misc
+# Build logs & scratch output
 *.log
+build_log.txt
+build_output.txt
 temp/
 tmp/
 file-system-probe.gradle

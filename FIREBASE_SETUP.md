@@ -38,6 +38,10 @@ Everything else in this repo is already implemented.
    ```
    (Same directory as `app/build.gradle.kts`)
 
+   > This file is **gitignored on purpose** — it carries your project's API key,
+   > OAuth client IDs and signing-certificate hash. `app/google-services.json.template`
+   > shows the expected shape; each developer generates their own from the console.
+
 ---
 
 ## Step 4 — Get Your Firebase Project ID
@@ -61,10 +65,13 @@ npx wrangler secret put FIREBASE_PROJECT_ID
 # Enter your project ID when prompted
 ```
 
-Also set your MongoDB API key if you haven't already:
+Also set your MongoDB connection string if you haven't already:
 ```bash
-npx wrangler secret put MONGODB_API_KEY
+npx wrangler secret put MONGODB_URI
 ```
+
+For local development, copy `trackit-api/.dev.vars.example` to `trackit-api/.dev.vars`
+and put the connection string there. `.dev.vars` is gitignored — never commit it.
 
 ---
 
@@ -84,6 +91,8 @@ npm run cf-typegen
 - [ ] Google Sign-In is enabled in Firebase Authentication
 - [ ] SHA-1 of your debug keystore is registered in Firebase
 - [ ] `FIREBASE_PROJECT_ID` is set in `wrangler.jsonc` (local dev) and as a Wrangler secret (production)
+- [ ] `MONGODB_URI` is in `trackit-api/.dev.vars` (local dev) and a Wrangler secret (production)
+- [ ] `trackit.api.baseUrl` is set in `local.properties` if you're running on a physical device
 - [ ] App builds without errors (`./gradlew assembleDebug`)
 - [ ] Tapping "Continue with Google" shows the account picker
 - [ ] After sign-in, the app navigates to Onboarding (first time) or Home (returning user)

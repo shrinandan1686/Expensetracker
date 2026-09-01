@@ -288,8 +288,10 @@ cd Expensetracker
 1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
 2. Add an Android app with package name `com.trackit.expense`
 3. Download `google-services.json` and place it at `app/google-services.json`
+   — this file is **gitignored**; it carries your API key, OAuth client IDs and
+   signing-cert hash. `app/google-services.json.template` shows the shape.
 4. Enable **Google Sign-In** under Authentication → Sign-in methods
-5. Note your **Project ID** (e.g. `trackit-84f11`)
+5. Note your **Project ID** (e.g. `trackit-a1b2c`)
 
 ### 3. Backend setup
 
@@ -298,7 +300,12 @@ cd trackit-api
 npm install
 ```
 
-Create `.dev.vars` (never commit this file):
+Copy the example env file and fill in your connection string (`.dev.vars` is
+gitignored — never commit it):
+
+```bash
+cp .dev.vars.example .dev.vars
+```
 
 ```
 MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority&appName=<AppName>
@@ -332,11 +339,23 @@ Server starts on `http://0.0.0.0:8787`. Find your Mac's LAN IP with `ipconfig ge
 
 Open `Expensetracker/` in Android Studio.
 
-In `NetworkModule.kt`, set the base URL to your local wrangler dev address:
+Point the app at your backend by adding a line to `local.properties` (gitignored,
+so your address never lands in a commit):
 
-```kotlin
-private const val BASE_URL = "http://192.168.x.x:8787/"
+```properties
+# Physical device on the same LAN as your dev machine:
+trackit.api.baseUrl=http://192.168.x.x:8787/
+
+# Emulator (this is the default if the property is absent):
+# trackit.api.baseUrl=http://10.0.2.2:8787/
+
+# Deployed backend:
+# trackit.api.baseUrl=https://<your-worker>.workers.dev/
 ```
+
+Gradle reads it into `BuildConfig.API_BASE_URL`, which `NetworkModule` consumes.
+Cleartext HTTP is permitted in **debug builds only** — release builds enforce
+Android's default HTTPS-only policy, so a deployed Worker must be reached over TLS.
 
 Build and run on a physical device (SMS reading requires a real device; emulators do not receive real SMSes).
 
@@ -354,13 +373,20 @@ Build and run on a physical device (SMS reading requires a real device; emulator
 | Variable | Example | Description |
 |---|---|---|
 | `MONGODB_DATABASE` | `trackit` | MongoDB database name |
-| `FIREBASE_PROJECT_ID` | `trackit-84f11` | Firebase project ID for JWT verification |
+| `FIREBASE_PROJECT_ID` | `trackit-a1b2c` | Firebase project ID for JWT verification |
 
 ### Backend (`.dev.vars` — secrets, never commit)
 
 | Variable | Description |
 |---|---|
 | `MONGODB_URI` | Full MongoDB Atlas connection string (URL-encode special chars in password) |
+
+### Android (`local.properties` — machine-local, never commit)
+
+| Property | Default | Description |
+|---|---|---|
+| `trackit.api.baseUrl` | `http://10.0.2.2:8787/` | Backend base URL, injected as `BuildConfig.API_BASE_URL` |
+| `sdk.dir` | — | Android SDK path (written by Android Studio) |
 
 ### Production secrets
 
@@ -418,6 +444,60 @@ npx wrangler secret put MONGODB_URI
 | `splits` | `id`, `groupId`, `description`, `totalAmount`, `paidBy`, `participantsJson`, `createdAt` |
 
 `membersJson` and `participantsJson` store serialized JSON arrays (via Gson) since Room does not support nested objects.
+
+---
+
+## Security Model
+
+### What proves identity
+Every `/api/*` route requires an `Authorization: Bearer <Firebase ID token>` header.
+`src/auth.ts` verifies the RS256 signature against Google's JWKS endpoint using Web
+Crypto — no Firebase Admin SDK, no service-account key to leak. It checks algorithm,
+`kid`, signature, expiry, `iat` skew, issuer and audience before trusting the `sub`
+claim as the user id. Public keys are cached through Cloudflare's Cache API, which
+honours Google's `Cache-Control: max-age=21600`, so keys rotate on their own.
+
+### What proves authorization
+Authentication proves *who* is calling; it says nothing about *what* they may touch.
+So every route derives ownership server-side and never from the request body:
+
+- **User-scoped collections** (`expenses`, `budgets`, `users`) filter on the token's
+  uid. `userId` is spread *last* into every written document, and `_id`/`userId` are
+  stripped from incoming payloads, so a client cannot claim another user's records.
+- **Group-scoped routes** all pass through `requireMembership()`, which loads the
+  group with `{ _id: groupId, 'members.userId': callerUid }`. A non-member gets a
+  404 — the same response as a group that does not exist, so the endpoint does not
+  confirm which group ids are real.
+- **Cross-member writes are validated against the member list**: a split's `paidBy`
+  and every participant, and a settlement's `toUserId`, must belong to that group.
+  Otherwise a caller could assign a debt to an unrelated user.
+- **Settlement confirmation** is filtered on `{ _id, toUserId: callerUid }` — only
+  the person owed money can confirm they were paid.
+
+### Input handling
+- Request-body fields that reach a Mongo filter are rejected unless scalar, so a
+  value like `{"$ne": null}` cannot be smuggled in as a query operator.
+- Amounts must be finite and positive; page size is clamped (200 max) and the sync
+  batch is capped (500 expenses) so no client can ask for or push an unbounded set.
+- `app.onError` logs unexpected failures server-side and returns a flat
+  `{ error: 'Internal server error' }` — no stack traces or driver messages.
+
+### On-device
+- The Firebase ID token is attached by `AuthInterceptor` and **redacted from OkHttp
+  logs**; body-level logging is compiled out of release builds entirely.
+- `allowBackup="false"` plus `data_extraction_rules.xml` keep the Room database of
+  parsed transactions out of Google cloud backups and device-transfer bundles.
+- `SmsReceiver` is guarded by `android:permission="android.permission.BROADCAST_SMS"`,
+  so only the system — not a third-party app — can deliver SMS intents to it.
+- Parsed SMS content never leaves the device beyond the user's own backend; TrackIt
+  never touches money, it only builds a `upi://pay` intent for the user's UPI app.
+
+### Known limitations
+- **No rate limiting.** A valid token can call the API as fast as it likes. A
+  Cloudflare Rate Limiting rule or a Durable Object counter is the intended fix.
+- **Group membership is invite-by-uid.** There is no invite-acceptance step yet, so
+  a member can add another uid to a group without that user consenting.
+- **No audit trail** on split edits or settlement confirmations.
 
 ---
 

@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +7,25 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
     alias(libs.plugins.google.services)
+}
+
+/**
+ * API base URL is read from `local.properties` (untracked) so no developer's LAN
+ * address or private deployment URL ever lands in git. Falls back to the Android
+ * emulator's host alias, which is what a fresh clone needs.
+ *
+ *   trackit.api.baseUrl=http://192.168.1.42:8787/     # physical device on your LAN
+ *   trackit.api.baseUrl=https://<worker>.workers.dev/ # deployed backend
+ */
+val apiBaseUrl: String = run {
+    val localProps = Properties()
+    val localFile = rootProject.file("local.properties")
+    if (localFile.exists()) {
+        localFile.inputStream().use { localProps.load(it) }
+    }
+    localProps.getProperty("trackit.api.baseUrl")
+        ?: providers.gradleProperty("trackit.api.baseUrl").orNull
+        ?: "http://10.0.2.2:8787/"
 }
 
 android {
@@ -17,6 +38,8 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+
+        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

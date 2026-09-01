@@ -19,8 +19,12 @@
 		"enabled": true
 	},
 	"upload_source_maps": true,
+	// Non-secret defaults. FIREBASE_PROJECT_ID is a placeholder on purpose so the
+	// repo does not point at anyone's live Firebase project — override it locally
+	// in `.dev.vars` (which takes precedence over `vars` in `wrangler dev`) and in
+	// production with `npx wrangler secret put FIREBASE_PROJECT_ID`.
 	"vars": {
 		"MONGODB_DATABASE": "trackit",
-		"FIREBASE_PROJECT_ID": "trackit-84f11"
+		"FIREBASE_PROJECT_ID": "your-firebase-project-id"
 	}
 }

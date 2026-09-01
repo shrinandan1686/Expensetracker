@@ -3,30 +3,29 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>Hello, World!</title>
+		<title>TrackIt API</title>
+		<style>
+			:root { color-scheme: light dark; }
+			body {
+				margin: 0;
+				min-height: 100vh;
+				display: grid;
+				place-items: center;
+				font: 16px/1.6 system-ui, -apple-system, sans-serif;
+			}
+			main { max-width: 34rem; padding: 2rem; }
+			code { font-size: 0.9em; }
+		</style>
 	</head>
 	<body>
-		<h1 id="heading"></h1>
-		<p>This page comes from a static asset stored at `public/index.html` as configured in `wrangler.jsonc`.</p>
-		<button id="button" type="button">Fetch a random UUID</button>
-		<output id="random" for="button"></output>
-		<script>
-			fetch('/message')
-				.then((resp) => resp.text())
-				.then((text) => {
-					const h1 = document.getElementById('heading');
-					h1.textContent = text;
-				});
-
-			const button = document.getElementById("button");
-			button.addEventListener("click", () => {
-				fetch('/random')
-					.then((resp) => resp.text())
-					.then((text) => {
-						const random = document.getElementById('random');
-						random.textContent = text;
-					});
-			});
-		</script>
+		<main>
+			<h1>TrackIt API</h1>
+			<p>
+				Backend for the TrackIt Android app. Every endpoint lives under
+				<code>/api/</code> and requires a valid Firebase ID token in an
+				<code>Authorization: Bearer &lt;token&gt;</code> header.
+			</p>
+			<p>There is no browser-facing UI — see the repository README for the endpoint reference.</p>
+		</main>
 	</body>
 </html>

@@ -1,11 +1,29 @@
-import { MongoClient, Db, ObjectId } from 'mongodb';
+// Type-only import: erased at compile time, so it pulls nothing into the bundle's
+// startup path. The driver itself is loaded lazily in `connect()` below.
+import type { MongoClient, Db } from 'mongodb';
+
+/**
+ * A Mongo update is either an update document (`{ $set: ... }`) or an
+ * aggregation pipeline (an array of stages) — `/api/sync` uses the pipeline
+ * form for its conditional last-write-wins merge.
+ */
+export type UpdateSpec = Record<string, unknown> | Record<string, unknown>[];
 
 // Worker-scoped connection cache — reused across requests within the same isolate.
 let cachedClient: MongoClient | null = null;
 let cachedDb: Db | null = null;
 
+/**
+ * Opens (or reuses) the connection, importing the driver on first use.
+ *
+ * The dynamic import matters: the MongoDB driver is a large CommonJS package that
+ * reaches for Node built-ins at import time. Loading it only when a handler
+ * actually needs the database keeps it off the isolate's startup path — a request
+ * rejected by the auth middleware never pays for it.
+ */
 async function connect(uri: string, dbName: string): Promise<Db> {
   if (cachedClient && cachedDb) return cachedDb;
+  const { MongoClient } = await import('mongodb');
   cachedClient = new MongoClient(uri);
   await cachedClient.connect();
   cachedDb = cachedClient.db(dbName);
@@ -48,7 +66,7 @@ export class MongoDataAPI {
   async updateOne(
     collection: string,
     filter: Record<string, unknown>,
-    update: Record<string, unknown>,
+    update: UpdateSpec,
     upsert = false
   ) {
     const db = await this.db();
@@ -62,7 +80,7 @@ export class MongoDataAPI {
     return { documents };
   }
 
-  async bulkUpsert(collection: string, items: { filter: Record<string, unknown>; update: Record<string, unknown> }[]) {
+  async bulkUpsert(collection: string, items: { filter: Record<string, unknown>; update: UpdateSpec }[]) {
     return Promise.all(items.map(item => this.updateOne(collection, item.filter, item.update, true)));
   }
 }

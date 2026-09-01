@@ -1,0 +1,12 @@
+# Copy to `.dev.vars` and fill in real values. `.dev.vars` is gitignored — never commit it.
+#
+# MongoDB Atlas connection string. URL-encode special characters in the password
+# (# → %23, @ → %40) or the driver will fail to parse the URI.
+MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority&appName=<AppName>
+
+# In production set this as a Wrangler secret instead of a plaintext var:
+#   npx wrangler secret put MONGODB_URI
+
+# Firebase project ID that issued the ID tokens. Overrides the placeholder in
+# wrangler.jsonc for local dev; set it as a secret in production.
+FIREBASE_PROJECT_ID=your-firebase-project-id

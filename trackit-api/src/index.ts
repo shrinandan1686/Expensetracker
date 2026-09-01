@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import { verifyFirebaseToken } from './auth';
 import { MongoDataAPI } from './db';
 
@@ -17,6 +18,52 @@ const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const getDb = (env: Env) => new MongoDataAPI(env.MONGODB_URI, env.MONGODB_DATABASE);
+
+/**
+ * Loads a group only if the caller is one of its members.
+ *
+ * Every /api/groups/:id/* route must go through this. Firebase auth proves *who*
+ * the caller is; it says nothing about *what* they may read. Without this check
+ * any signed-in user could pass an arbitrary group id and read or write another
+ * group's splits, balances and settlements.
+ */
+async function requireMembership(
+  db: MongoDataAPI,
+  groupId: string,
+  userId: string
+): Promise<any | null> {
+  const result = (await db.findOne('groups', {
+    _id: groupId,
+    'members.userId': userId,
+  })) as any;
+  return result?.document ?? null;
+}
+
+/** Rejects request-body values that are objects, which Mongo would read as query operators. */
+function assertScalar(value: unknown, field: string): void {
+  if (value !== null && typeof value === 'object') {
+    throw new HTTPException(400, { message: `Invalid ${field}` });
+  }
+}
+
+/** Parses a positive integer query param, clamped to `max` so a client cannot ask for the whole collection. */
+function positiveInt(raw: string | undefined, fallback: number, max: number): number {
+  const n = Number.parseInt(raw ?? '', 10);
+  if (!Number.isFinite(n) || n < 1) return fallback;
+  return Math.min(n, max);
+}
+
+/** Validates a currency amount: finite, positive, and within a sane ceiling. */
+function assertAmount(value: unknown, field = 'amount'): number {
+  const n = typeof value === 'number' ? value : Number.NaN;
+  if (!Number.isFinite(n) || n <= 0 || n > 100_000_000) {
+    throw new HTTPException(400, { message: `Invalid ${field}` });
+  }
+  return n;
+}
+
+const MAX_PAGE_SIZE = 200;
+const MAX_SYNC_BATCH = 500;
 
 // ── Auth Middleware ───────────────────────────────────────────────────────────
 // All /api/* routes require a valid Firebase ID token in Authorization: Bearer <token>.
@@ -45,6 +92,9 @@ app.use('/api/*', async (c, next) => {
 app.post('/api/auth/profile', async (c) => {
   const userId = c.get('userId');
   const { name, email, photoUrl } = await c.req.json();
+  assertScalar(name, 'name');
+  assertScalar(email, 'email');
+  assertScalar(photoUrl, 'photoUrl');
 
   const db = getDb(c.env);
   await db.updateOne(
@@ -75,8 +125,14 @@ app.put('/api/me', async (c) => {
   const { name, upiId } = await c.req.json();
   const db = getDb(c.env);
   const update: Record<string, unknown> = { updatedAt: Date.now() };
-  if (name !== undefined) update.name = name;
-  if (upiId !== undefined) update.upiId = upiId;
+  if (name !== undefined) {
+    assertScalar(name, 'name');
+    update.name = String(name).slice(0, 100);
+  }
+  if (upiId !== undefined) {
+    assertScalar(upiId, 'upiId');
+    update.upiId = String(upiId).slice(0, 100);
+  }
   await db.updateOne('users', { _id: userId }, { $set: update }, false);
   return c.json({ success: true });
 });
@@ -86,8 +142,8 @@ app.put('/api/me', async (c) => {
 app.get('/api/expenses', async (c) => {
   const userId = c.get('userId');
   const month = c.req.query('month');
-  const page = parseInt(c.req.query('page') || '1');
-  const limit = parseInt(c.req.query('limit') || '50');
+  const page = positiveInt(c.req.query('page'), 1, 10_000);
+  const limit = positiveInt(c.req.query('limit'), 50, MAX_PAGE_SIZE);
 
   const filter: any = { userId };
   if (month) filter.month = month;
@@ -104,9 +160,13 @@ app.get('/api/expenses', async (c) => {
 
 app.post('/api/expenses', async (c) => {
   const userId = c.get('userId');
-  const expense = await c.req.json();
+  const { _id, userId: _ignoredUserId, ...expense } = await c.req.json();
+
+  assertAmount(expense.amount);
+  assertScalar(expense.id, 'id');
 
   const db = getDb(c.env);
+  // userId is spread last so a client cannot claim another user's records.
   const result = await db.insertOne('expenses', { ...expense, userId });
 
   return c.json(result);
@@ -115,31 +175,48 @@ app.post('/api/expenses', async (c) => {
 app.post('/api/sync', async (c) => {
   const userId = c.get('userId');
   const { expenses }: { expenses: any[] } = await c.req.json();
+  if (!Array.isArray(expenses)) {
+    return c.json({ error: 'expenses must be an array' }, 400);
+  }
+  if (expenses.length > MAX_SYNC_BATCH) {
+    return c.json({ error: `Batch too large (max ${MAX_SYNC_BATCH})` }, 413);
+  }
   const now = Date.now();
 
   const db = getDb(c.env);
   // Update pipeline: only replace the stored record when the incoming updatedAt
   // is >= the stored updatedAt. This prevents an older offline edit from
   // clobbering a newer edit made on another device.
-  const upserts = expenses.map((e: any) => ({
-    filter: { id: e.id, userId },
-    update: [
-      {
-        $replaceWith: {
-          $mergeObjects: [
-            '$$ROOT',
-            {
-              $cond: {
-                if: { $gte: [e.updatedAt ?? 0, { $ifNull: ['$updatedAt', 0] }] },
-                then: { ...e, userId, syncedAt: now },
-                else: {}
+  const upserts = expenses.map((raw: any) => {
+    // `id` goes straight into a query filter, so it must be a scalar — an object
+    // such as {"$ne": null} would otherwise be read as a query operator.
+    if (typeof raw?.id !== 'string' || raw.id.length === 0) {
+      throw new HTTPException(400, { message: 'Each expense needs a string id' });
+    }
+    const { _id, userId: _ignoredUserId, ...e } = raw;
+    const incomingUpdatedAt =
+      typeof e.updatedAt === 'number' && Number.isFinite(e.updatedAt) ? e.updatedAt : 0;
+
+    return {
+      filter: { id: e.id, userId },
+      update: [
+        {
+          $replaceWith: {
+            $mergeObjects: [
+              '$$ROOT',
+              {
+                $cond: {
+                  if: { $gte: [incomingUpdatedAt, { $ifNull: ['$updatedAt', 0] }] },
+                  then: { ...e, userId, syncedAt: now },
+                  else: {}
+                }
               }
-            }
-          ]
+            ]
+          }
         }
-      }
-    ]
-  }));
+      ]
+    };
+  });
 
   const results = await db.bulkUpsert('expenses', upserts);
   return c.json({ synced: results.length });
@@ -173,6 +250,9 @@ function simplifyDebts(
 app.post('/api/groups', async (c) => {
   const userId = c.get('userId');
   const { name, emoji } = await c.req.json();
+  if (typeof name !== 'string' || name.trim().length === 0) {
+    return c.json({ error: 'Group name is required' }, 400);
+  }
   const db = getDb(c.env);
 
   const creatorResult = await db.findOne('users', { _id: userId }) as any;
@@ -181,8 +261,8 @@ app.post('/api/groups', async (c) => {
 
   const group = {
     _id: crypto.randomUUID(),
-    name,
-    emoji: emoji ?? null,
+    name: name.trim().slice(0, 100),
+    emoji: typeof emoji === 'string' ? emoji.slice(0, 8) : null,
     createdBy: userId,
     members: [member],
     createdAt: Date.now()
@@ -212,7 +292,12 @@ app.post('/api/groups/:id/members', async (c) => {
   const userId = c.get('userId');
   const groupId = c.req.param('id');
   const { memberId, memberName, memberPhone, memberUpiId } = await c.req.json();
+  if (typeof memberId !== 'string' || memberId.length === 0) {
+    return c.json({ error: 'memberId must be a string' }, 400);
+  }
   const db = getDb(c.env);
+  // The filter doubles as the authorization check: the update only applies to a
+  // group the caller is already a member of.
   await db.updateOne(
     'groups',
     { _id: groupId, 'members.userId': userId },
@@ -227,15 +312,38 @@ app.post('/api/groups/:id/splits', async (c) => {
   const groupId = c.req.param('id');
   const body = await c.req.json();
   const db = getDb(c.env);
+
+  const group = await requireMembership(db, groupId, userId);
+  if (!group) return c.json({ error: 'Group not found' }, 404);
+
+  const totalAmount = assertAmount(body.totalAmount, 'totalAmount');
+
+  // paidBy and every participant must be a member of *this* group, otherwise a
+  // split could assign a debt to an unrelated user and skew their balances.
+  const memberIds = new Set<string>(group.members.map((m: any) => m.userId));
+  const paidBy = body.paidBy ?? userId;
+  if (!memberIds.has(paidBy)) {
+    return c.json({ error: 'paidBy is not a member of this group' }, 400);
+  }
+
+  const rawParticipants = Array.isArray(body.participants) ? body.participants : [];
+  const participants = rawParticipants.map((p: any) => {
+    if (!memberIds.has(p?.userId)) {
+      throw new HTTPException(400, { message: 'Participant is not a member of this group' });
+    }
+    return { userId: p.userId as string, amount: assertAmount(p.amount, 'participant amount') };
+  });
+
   const split = {
     _id: crypto.randomUUID(),
     groupId,
-    description: body.description,
-    totalAmount: body.totalAmount,
+    description: typeof body.description === 'string' ? body.description.slice(0, 500) : '',
+    totalAmount,
     currency: 'INR',
-    paidBy: body.paidBy ?? userId,
-    participants: body.participants ?? [],
-    expenseId: body.expenseId ?? null,
+    paidBy,
+    participants,
+    expenseId: typeof body.expenseId === 'string' ? body.expenseId : null,
+    createdBy: userId,
     createdAt: Date.now()
   };
   await db.insertOne('splits', split);
@@ -243,8 +351,14 @@ app.post('/api/groups/:id/splits', async (c) => {
 });
 
 app.get('/api/groups/:id/splits', async (c) => {
+  const userId = c.get('userId');
   const groupId = c.req.param('id');
   const db = getDb(c.env);
+
+  if (!(await requireMembership(db, groupId, userId))) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+
   const result = await db.find('splits', { groupId }, { sort: { createdAt: -1 } }) as any;
   const splits = (result?.documents ?? []).map((s: any) => ({ ...s, id: s._id }));
   return c.json(splits);
@@ -255,14 +369,15 @@ app.get('/api/groups/:id/balances', async (c) => {
   const groupId = c.req.param('id');
   const db = getDb(c.env);
 
-  const [groupResult, splitsResult, settlementsResult] = await Promise.all([
-    db.findOne('groups', { _id: groupId }) as Promise<any>,
+  // Membership is resolved first: the balances payload exposes every member's
+  // uid and net position, so non-members must not reach the aggregation at all.
+  const group = await requireMembership(db, groupId, userId);
+  if (!group) return c.json({ error: 'Group not found' }, 404);
+
+  const [splitsResult, settlementsResult] = await Promise.all([
     db.find('splits', { groupId }) as Promise<any>,
     db.find('settlements', { groupId, status: 'confirmed' }) as Promise<any>
   ]);
-
-  const group = groupResult?.document;
-  if (!group) return c.json({ error: 'Group not found' }, 404);
 
   const splits       = splitsResult?.documents ?? [];
   const settlements  = settlementsResult?.documents ?? [];
@@ -289,12 +404,25 @@ app.post('/api/groups/:id/settle', async (c) => {
   const groupId = c.req.param('id');
   const { toUserId, amount } = await c.req.json();
   const db = getDb(c.env);
+
+  const group = await requireMembership(db, groupId, userId);
+  if (!group) return c.json({ error: 'Group not found' }, 404);
+
+  const validAmount = assertAmount(amount);
+  const memberIds = new Set<string>(group.members.map((m: any) => m.userId));
+  if (!memberIds.has(toUserId)) {
+    return c.json({ error: 'toUserId is not a member of this group' }, 400);
+  }
+  if (toUserId === userId) {
+    return c.json({ error: 'Cannot settle with yourself' }, 400);
+  }
+
   const settlement = {
     _id: crypto.randomUUID(),
     groupId,
     fromUserId: userId,
     toUserId,
-    amount,
+    amount: validAmount,
     status: 'pending',
     createdAt: Date.now(),
     confirmedAt: null
@@ -351,6 +479,7 @@ app.get('/api/analytics/summary', async (c) => {
 app.get('/api/budgets', async (c) => {
   const userId = c.get('userId');
   const month = c.req.query('month');
+  if (!month) return c.json({ error: 'Month required' }, 400);
 
   const db = getDb(c.env);
   const result = await db.findOne('budgets', { userId, month }) as { document?: any };
@@ -360,7 +489,10 @@ app.get('/api/budgets', async (c) => {
 
 app.post('/api/budgets', async (c) => {
   const userId = c.get('userId');
-  const budget = await c.req.json();
+  const { _id, userId: _ignoredUserId, ...budget } = await c.req.json();
+  if (typeof budget.month !== 'string') {
+    return c.json({ error: 'month must be a string' }, 400);
+  }
 
   const db = getDb(c.env);
   const result = await db.updateOne(
@@ -372,5 +504,20 @@ app.post('/api/budgets', async (c) => {
 
   return c.json(result);
 });
+
+// ── Error Handling ───────────────────────────────────────────────────────────
+// Validation failures surface as a clean 400. Anything unexpected is logged
+// server-side (visible in `wrangler tail`) but never echoed to the client —
+// stack traces and driver errors can disclose schema and connection details.
+
+app.onError((err, c) => {
+  if (err instanceof HTTPException) {
+    return c.json({ error: err.message }, err.status);
+  }
+  console.error('Unhandled error:', err);
+  return c.json({ error: 'Internal server error' }, 500);
+});
+
+app.notFound((c) => c.json({ error: 'Not found' }, 404));
 
 export default app;

@@ -6,11 +6,9 @@ declare namespace Cloudflare {
 		mainModule: typeof import("./src/index");
 	}
 	interface Env {
-		SESSIONS: KVNamespace;
-		MONGODB_API_URL: "https://data.mongodb-api.com/app/data-xxxx/endpoint/data/v1";
-		MONGODB_DATASOURCE: "Cluster0";
 		MONGODB_DATABASE: "trackit";
-		MONGODB_API_KEY: string;
+		FIREBASE_PROJECT_ID: string;
+		MONGODB_URI: string;
 	}
 }
 interface Env extends Cloudflare.Env {}
@@ -18,7 +16,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "MONGODB_API_URL" | "MONGODB_DATASOURCE" | "MONGODB_DATABASE" | "MONGODB_API_KEY">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "MONGODB_DATABASE" | "FIREBASE_PROJECT_ID" | "MONGODB_URI">> {}
 }
 
 // Begin runtime types
