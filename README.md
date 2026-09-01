@@ -492,12 +492,27 @@ So every route derives ownership server-side and never from the request body:
 - Parsed SMS content never leaves the device beyond the user's own backend; TrackIt
   never touches money, it only builds a `upi://pay` intent for the user's UPI app.
 
+### Rate limiting
+Two Cloudflare rate-limit bindings sit in front of every `/api/*` route:
+
+| Binding | Key | Budget | Why |
+|---|---|---|---|
+| `IP_RATE_LIMIT` | `CF-Connecting-IP` | 300 / min | Checked **before** token verification, so a flood of junk tokens cannot burn CPU on RS256 signature checks |
+| `USER_RATE_LIMIT` | Firebase uid | 120 / min | Checked **after** verification, so one compromised account cannot exhaust the Worker or hammer MongoDB for everyone else |
+
+Both fail *open*: if a limiter is unavailable the request proceeds rather than the
+API going dark. Order matters and is covered by tests — an over-limit IP gets a
+429 with no `Authorization` header present, while an invalid token still gets a
+401 even when the user limiter would have denied it, so an unauthenticated caller
+can never consume someone else's quota.
+
 ### Known limitations
-- **No rate limiting.** A valid token can call the API as fast as it likes. A
-  Cloudflare Rate Limiting rule or a Durable Object counter is the intended fix.
 - **Group membership is invite-by-uid.** There is no invite-acceptance step yet, so
   a member can add another uid to a group without that user consenting.
 - **No audit trail** on split edits or settlement confirmations.
+- **Rate limits are per-datacenter**, not global — Cloudflare's rate limiting API
+  counts within a colo, so the effective ceiling is higher than the configured
+  number for a geographically distributed caller.
 
 ---
 

@@ -7,6 +7,10 @@ type Env = {
   MONGODB_URI: string;
   MONGODB_DATABASE: string;
   FIREBASE_PROJECT_ID: string;
+  // Rate limit bindings, declared in wrangler.jsonc. Optional in the type so the
+  // Worker still runs where they are not provisioned (e.g. the test runtime).
+  IP_RATE_LIMIT?: RateLimit;
+  USER_RATE_LIMIT?: RateLimit;
 };
 
 type Variables = {
@@ -65,24 +69,60 @@ function assertAmount(value: unknown, field = 'amount'): number {
 const MAX_PAGE_SIZE = 200;
 const MAX_SYNC_BATCH = 500;
 
+/**
+ * Consumes one token from a rate limiter, returning true when the request may
+ * proceed. A missing binding is treated as "allowed" so the Worker stays usable
+ * in environments where the limiter is not provisioned; the limiter itself is
+ * best-effort by design, and failing open here matches Cloudflare's own guidance
+ * that a limiter outage should not take the API down with it.
+ */
+async function withinLimit(limiter: RateLimit | undefined, key: string): Promise<boolean> {
+  if (!limiter) return true;
+  try {
+    const { success } = await limiter.limit({ key });
+    return success;
+  } catch {
+    return true;
+  }
+}
+
+const tooManyRequests = (c: any, period: number) =>
+  c.json({ error: 'Too many requests' }, 429, { 'Retry-After': String(period) });
+
 // ── Auth Middleware ───────────────────────────────────────────────────────────
 // All /api/* routes require a valid Firebase ID token in Authorization: Bearer <token>.
 // The Firebase UID is extracted and stored in context as userId for route handlers.
 
 app.use('/api/*', async (c, next) => {
+  // Per-IP limit first: verifying an RS256 signature costs CPU, so an
+  // unauthenticated flood must be turned away before it reaches the crypto path.
+  const ip = c.req.header('CF-Connecting-IP') ?? 'unknown';
+  if (!(await withinLimit(c.env.IP_RATE_LIMIT, ip))) {
+    return tooManyRequests(c, 60);
+  }
+
   const authHeader = c.req.header('Authorization');
   if (!authHeader?.startsWith('Bearer ')) {
     return c.json({ error: 'Unauthorized' }, 401);
   }
 
   const token = authHeader.split(' ')[1];
+  let userId: string;
   try {
     const payload = await verifyFirebaseToken(token, c.env.FIREBASE_PROJECT_ID);
-    c.set('userId', payload.uid);
-    await next();
+    userId = payload.uid;
   } catch (e) {
     return c.json({ error: 'Invalid or expired token' }, 401);
   }
+
+  // Per-user limit second, so one account cannot exhaust the Worker or hammer
+  // MongoDB on everyone else's behalf even with a perfectly valid token.
+  if (!(await withinLimit(c.env.USER_RATE_LIMIT, userId))) {
+    return tooManyRequests(c, 60);
+  }
+
+  c.set('userId', userId);
+  await next();
 });
 
 // ── Auth: Profile Bootstrap ───────────────────────────────────────────────────

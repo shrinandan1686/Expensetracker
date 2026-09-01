@@ -70,6 +70,61 @@ describe('auth gate on /api/*', () => {
 	});
 });
 
+describe('rate limiting', () => {
+	const denyingLimiter = { limit: async () => ({ success: false }) };
+	const allowingLimiter = { limit: async () => ({ success: true }) };
+
+	const callWith = async (path: string, envOverrides: Record<string, unknown>, init?: RequestInit) => {
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(
+			new Request(`http://example.com${path}`, init),
+			{ ...env, ...envOverrides } as typeof env,
+			ctx
+		);
+		await waitOnExecutionContext(ctx);
+		return response;
+	};
+
+	it('turns away an over-limit IP before it reaches the auth check', async () => {
+		// No Authorization header at all: a 429 rather than a 401 proves the IP
+		// limit runs first, so a flood never reaches RS256 verification.
+		const response = await callWith('/api/me', { IP_RATE_LIMIT: denyingLimiter });
+		expect(response.status).toBe(429);
+		expect(response.headers.get('Retry-After')).toBe('60');
+		expect(await response.json()).toEqual({ error: 'Too many requests' });
+	});
+
+	it('still rejects a bad token when the IP is within its limit', async () => {
+		const response = await callWith(
+			'/api/me',
+			{ IP_RATE_LIMIT: allowingLimiter },
+			{ headers: { Authorization: 'Bearer not-a-jwt' } }
+		);
+		expect(response.status).toBe(401);
+	});
+
+	it('checks the per-user limit only after a token verifies', async () => {
+		// The user limiter denies, but the token is invalid, so auth must still win:
+		// an unauthenticated caller cannot consume another account's quota.
+		const response = await callWith(
+			'/api/me',
+			{ IP_RATE_LIMIT: allowingLimiter, USER_RATE_LIMIT: denyingLimiter },
+			{ headers: { Authorization: 'Bearer not-a-jwt' } }
+		);
+		expect(response.status).toBe(401);
+	});
+
+	it('fails open when a limiter throws, rather than taking the API down', async () => {
+		const brokenLimiter = {
+			limit: async () => {
+				throw new Error('limiter unavailable');
+			},
+		};
+		const response = await callWith('/api/me', { IP_RATE_LIMIT: brokenLimiter });
+		expect(response.status).toBe(401); // reached auth, was not 429 or 500
+	});
+});
+
 describe('unauthenticated surface', () => {
 	it('serves the static landing page at /', async () => {
 		const response = await SELF.fetch('http://example.com/');

@@ -6,6 +6,8 @@ declare namespace Cloudflare {
 		mainModule: typeof import("./src/index");
 	}
 	interface Env {
+		IP_RATE_LIMIT: RateLimit;
+		USER_RATE_LIMIT: RateLimit;
 		MONGODB_DATABASE: "trackit";
 		FIREBASE_PROJECT_ID: string;
 		MONGODB_URI: string;
