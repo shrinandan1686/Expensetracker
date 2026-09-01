@@ -1,0 +1,53 @@
+#!/bin/sh
+#
+# Blocks a commit that would introduce a credential.
+#
+# Enable it once per clone:
+#     git config core.hooksPath .githooks
+#
+# Uses gitleaks when it is installed (brew install gitleaks); otherwise falls
+# back to a grep over the staged patch so the guard still does something useful
+# on a machine without it.
+
+set -e
+
+if git diff --cached --name-only | grep -qx 'app/google-services.json'; then
+	echo "pre-commit: refusing to commit app/google-services.json — it carries your"
+	echo "            Firebase API key, OAuth client ids and signing-cert hash."
+	echo "            It is gitignored; commit google-services.json.template instead."
+	exit 1
+fi
+
+if command -v gitleaks >/dev/null 2>&1; then
+	gitleaks protect --staged --redact --config .gitleaks.toml
+	exit $?
+fi
+
+echo "pre-commit: gitleaks not installed, falling back to a pattern scan."
+echo "            Install it for full coverage: brew install gitleaks"
+
+# Only the added lines of the staged patch.
+staged_additions=$(git diff --cached --unified=0 | grep '^+' | grep -v '^+++' || true)
+
+fail=0
+check() {
+	# -e is required: patterns like -----BEGIN would otherwise parse as flags.
+	if printf '%s\n' "$staged_additions" | grep -Eq -e "$1"; then
+		echo "pre-commit: blocked — staged changes look like they contain $2"
+		fail=1
+	fi
+}
+
+check 'AIza[0-9A-Za-z_-]{35}'                                  'a Google/Firebase API key'
+check 'mongodb(\+srv)?://[^:/[:space:]<]+:[^@/[:space:]<]+@'    'a MongoDB connection string with credentials'
+check '"private_key"[[:space:]]*:'                              'a service-account private key'
+check '-----BEGIN [A-Z ]*PRIVATE KEY'                           'a private key'
+check 'gh[pousr]_[A-Za-z0-9]{36}'                               'a GitHub token'
+
+if [ "$fail" -ne 0 ]; then
+	echo
+	echo "If this is a false positive, review the diff and re-run with --no-verify."
+	exit 1
+fi
+
+exit 0

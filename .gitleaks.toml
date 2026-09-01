@@ -1,0 +1,35 @@
+# gitleaks config for TrackIt. Extends the upstream default rule set and adds the
+# credentials this repo specifically must never carry.
+title = "TrackIt secret scanning"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "firebase-android-api-key"
+description = "Google/Firebase API key"
+regex = '''AIza[0-9A-Za-z_\-]{35}'''
+tags = ["key", "firebase", "google"]
+
+[[rules]]
+id = "mongodb-srv-uri-with-credentials"
+description = "MongoDB connection string containing a real username and password"
+# Matches a connection string whose userinfo is actually filled in, while the
+# negative lookaheads let the docs' <user>:<password> placeholder form through.
+regex = '''mongodb(\+srv)?:\/\/(?!<)[^:\/\s<>]+:(?!<)[^@\/\s<>]+@'''
+tags = ["database", "mongodb"]
+
+[allowlist]
+description = "Documentation placeholders and generated lockfiles"
+paths = [
+  '''app/google-services\.json\.template''',
+  '''\.dev\.vars\.example''',
+  '''package-lock\.json''',
+  '''gradle/wrapper/gradle-wrapper\.jar''',
+]
+regexes = [
+  # Placeholder forms used throughout the README and setup guide.
+  '''YOUR_[A-Z_]+''',
+  '''your-firebase-project-id''',
+  '''<user>:<password>''',
+]

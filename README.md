@@ -447,6 +447,36 @@ npx wrangler secret put MONGODB_URI
 
 ---
 
+## CI & Secret Scanning
+
+`.github/workflows/ci.yml` runs on every push to `main` and every pull request:
+
+| Job | What it does |
+|---|---|
+| **backend** | `tsc --noEmit` + `vitest run` in `trackit-api/` |
+| **android** | `:app:testDebugUnitTest` + `:app:lintDebug`, with test and lint reports uploaded as artifacts |
+| **secrets** | gitleaks over the full history, using `.gitleaks.toml` |
+
+The Android job writes `app/google-services.json.template` into place before
+building. The Google Services Gradle plugin only needs well-formed JSON whose
+`package_name` matches the `applicationId` — enough to compile and run unit
+tests, and not enough to reach a real Firebase project.
+
+### Local guard
+
+A pre-commit hook refuses to commit `app/google-services.json` or any staged diff
+that looks like a credential. Enable it once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+It uses [gitleaks](https://github.com/gitleaks/gitleaks) when installed
+(`brew install gitleaks`) and falls back to a pattern scan otherwise, so the
+guard still works on a machine without it.
+
+---
+
 ## Security Model
 
 ### What proves identity
