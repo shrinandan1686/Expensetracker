@@ -20,6 +20,13 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
+    <!--
+        The SMS permissions above imply telephony hardware. Declaring it optional
+        keeps TrackIt installable on tablets and Chrome OS devices, where automatic
+        SMS parsing is unavailable but manual entry and sync still work.
+    -->
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
 
     <application
@@ -42,8 +49,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Deep Link Support -->
-            <intent-filter android:autoVerify="true">
+            <!--
+                Deep Link Support: trackit://expense_detail/{id}
+
+                No android:autoVerify here — that is for Android App Links, which
+                require an http/https scheme plus a host to verify against. On a
+                custom scheme it verifies nothing and just logs failures.
+            -->
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />

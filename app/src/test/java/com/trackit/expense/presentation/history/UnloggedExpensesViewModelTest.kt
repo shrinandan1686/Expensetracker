@@ -90,16 +90,16 @@ class UnloggedExpensesViewModelTest {
     // ── onLogExpense ─────────────────────────────────────────────────────────
 
     @Test fun `onLogExpense calls markLoggedUseCase with correct id`() = runTest {
-        coEvery { markLoggedUseCase(any()) } returns Result.success(Unit)
+        coEvery { markLoggedUseCase(any(), any()) } returns Result.success(Unit)
         val vm = buildVm()
 
         vm.onLogExpense(expense1)
 
-        coVerify { markLoggedUseCase("e1") }
+        coVerify { markLoggedUseCase("e1", any()) }
     }
 
     @Test fun `onLogExpense success does not set errorMessage`() = runTest {
-        coEvery { markLoggedUseCase(any()) } returns Result.success(Unit)
+        coEvery { markLoggedUseCase(any(), any()) } returns Result.success(Unit)
         val vm = buildVm()
 
         vm.onLogExpense(expense1)
@@ -108,7 +108,7 @@ class UnloggedExpensesViewModelTest {
     }
 
     @Test fun `onLogExpense failure sets errorMessage`() = runTest {
-        coEvery { markLoggedUseCase(any()) } returns Result.failure(RuntimeException("DB locked"))
+        coEvery { markLoggedUseCase(any(), any()) } returns Result.failure(RuntimeException("DB locked"))
         val vm = buildVm()
 
         vm.onLogExpense(expense1)
@@ -117,7 +117,7 @@ class UnloggedExpensesViewModelTest {
     }
 
     @Test fun `onLogExpense failure does not affect expenses list`() = runTest {
-        coEvery { markLoggedUseCase(any()) } returns Result.failure(RuntimeException("err"))
+        coEvery { markLoggedUseCase(any(), any()) } returns Result.failure(RuntimeException("err"))
         val vm = buildVm()
 
         vm.onLogExpense(expense1)
@@ -240,7 +240,7 @@ class UnloggedExpensesViewModelTest {
     // ── onErrorDismissed ──────────────────────────────────────────────────────
 
     @Test fun `onErrorDismissed clears errorMessage`() = runTest {
-        coEvery { markLoggedUseCase(any()) } returns Result.failure(RuntimeException("err"))
+        coEvery { markLoggedUseCase(any(), any()) } returns Result.failure(RuntimeException("err"))
         val vm = buildVm()
 
         vm.onLogExpense(expense1)

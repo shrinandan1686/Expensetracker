@@ -170,19 +170,19 @@ class SmsParserTest {
     // ACCOUNT LAST-4 PARSING
     // ─────────────────────────────────────────────────────────────────────────────
 
-    @Test fun `parseAccountLast4 - A/c XX prefix - SMS_1`() =
+    @Test fun `parseAccountLast4 - A-c XX prefix - SMS_1`() =
         assertEquals("1234", SmsParser.parseAccountLast4(SMS_1))
 
     @Test fun `parseAccountLast4 - returns null when absent - SMS_2`() =
         assertNull(SmsParser.parseAccountLast4(SMS_2))
 
-    @Test fun `parseAccountLast4 - A/c XX prefix - SMS_4`() =
+    @Test fun `parseAccountLast4 - A-c XX prefix - SMS_4`() =
         assertEquals("5678", SmsParser.parseAccountLast4(SMS_4))
 
     @Test fun `parseAccountLast4 - Card XX prefix`() =
         assertEquals("4321", SmsParser.parseAccountLast4("₹2500 spent on Card XX4321 at BigBazaar"))
 
-    @Test fun `parseAccountLast4 - lowercase a/c variant`() =
+    @Test fun `parseAccountLast4 - lowercase a-c variant`() =
         assertEquals("3456", SmsParser.parseAccountLast4("Rs 100 debited from a/c xx3456 to UPI"))
 
     // ─────────────────────────────────────────────────────────────────────────────

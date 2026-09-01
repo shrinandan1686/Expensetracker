@@ -18,6 +18,7 @@ import com.trackit.expense.worker.SyncWorker
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
@@ -91,7 +92,7 @@ class HomeViewModelTest {
         val vm = buildVm()
         assertThat(vm.uiState.value.currentMonth).isNotEmpty()
         // Should follow YYYY-MM format
-        assertThat(vm.uiState.value.currentMonth).matches(Regex("\\d{4}-\\d{2}"))
+        assertThat(vm.uiState.value.currentMonth).matches("\\d{4}-\\d{2}")
     }
 
     // ── Expense list ─────────────────────────────────────────────────────────
@@ -281,7 +282,7 @@ class HomeViewModelTest {
 
         vm.onDeleteExpense(Expense(id = "target-id"))
 
-        verify { deleteExpenseUseCase("target-id") }
+        coVerify { deleteExpenseUseCase("target-id") }
     }
 
     // ── onSyncNow / onRetrySync ───────────────────────────────────────────────

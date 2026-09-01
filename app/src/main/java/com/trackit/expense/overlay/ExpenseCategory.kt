@@ -38,8 +38,12 @@ enum class ExpenseCategory(
             return when {
                 m.containsAny("swiggy", "zomato", "dominos", "pizza", "food", "cafe", "restaurant", "hotel") -> FOOD
                 m.containsAny("ola", "uber", "rapido", "redbus", "irctc", "metro", "bus", "auto") -> TRANSPORT
-                m.containsAny("amazon", "flipkart", "myntra", "ajio", "nykaa", "shop", "store", "mart") -> SHOPPING
-                m.containsAny("bigbasket", "dmart", "grofer", "more", "reliance", "grocery", "vegetable") -> GROCERIES
+                m.containsAny("amazon", "flipkart", "myntra", "ajio", "nykaa", "shop", "store") -> SHOPPING
+                // "mart" lives here, not in Shopping above: matching is by substring,
+                // so a generic "mart" in the Shopping branch swallowed "dmart" before
+                // this branch was ever reached. The chains it catches (DMart, Walmart,
+                // Star Bazaar) are hypermarkets, so Groceries is the better home.
+                m.containsAny("bigbasket", "dmart", "grofer", "more", "reliance", "grocery", "vegetable", "mart") -> GROCERIES
                 m.containsAny("electricity", "water", "gas", "broadband", "airtel", "jio", "bsnl", "bill", "recharge") -> BILLS
                 m.containsAny("pharma", "medical", "hospital", "clinic", "doctor", "health", "apollo", "med") -> HEALTHCARE
                 m.containsAny("netflix", "prime", "spotify", "hotstar", "disney", "cinema", "pvr", "inox", "game") -> ENTERTAINMENT

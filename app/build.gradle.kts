@@ -75,6 +75,24 @@ android {
         buildConfig = true
     }
 
+    lint {
+        // ComposableStateFlowValueDetector ships a kotlinx-metadata-jvm that only
+        // reads Kotlin metadata up to 2.0.0, and this project compiles to 2.1.0, so
+        // the detector throws and takes the whole lint run down. The crash is in the
+        // detector, not in our code. Re-enable once the Compose lint artifact
+        // catches up to the Kotlin version in gradle/libs.versions.toml.
+        disable += "StateFlowValueCalledInComposition"
+    }
+
+    testOptions {
+        unitTests {
+            // SmsParser calls android.util.Log, which is a stub in the JVM test
+            // runtime and throws "not mocked" by default. Returning defaults lets
+            // the parser be unit-tested without a Robolectric or mockk-static shim.
+            isReturnDefaultValues = true
+        }
+    }
+
     // composeOptions removed: Kotlin 2.x uses kotlin.plugin.compose instead
 
     packaging {

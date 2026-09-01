@@ -14,6 +14,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
 import io.mockk.slot
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
@@ -183,7 +184,14 @@ class AddExpenseViewModelTest {
         val vm = buildVm()
         vm.onAmountChanged("500")
         vm.onMerchantChanged("Swiggy")
-        coEvery { addExpenseUseCase(any()) } returns Result.success("new-id")
+        // delay() gives the save a suspension point in virtual time. Without it the
+        // stub completes synchronously under UnconfinedTestDispatcher and StateFlow
+        // conflates isSubmitting=true away, so the collector only ever sees the
+        // terminal state and the assertion below could never hold.
+        coEvery { addExpenseUseCase(any()) } coAnswers {
+            delay(10)
+            Result.success("new-id")
+        }
 
         vm.uiState.test {
             awaitItem() // initial
@@ -252,6 +260,12 @@ class AddExpenseViewModelTest {
 
     @Test fun `onDiscardDuplicate deletes expense and sets isSaved`() = runTest {
         coEvery { deleteExpenseUseCase(any()) } returns Result.success(Unit)
+        // onDiscardDuplicate deletes uiState.expenseId, which init only fills in once
+        // getExpenseByIdUseCase actually resolves an expense. The setUp default
+        // returns flowOf(null), so without this the early-return branch fires.
+        coEvery { getExpenseByIdUseCase("dup-id") } returns flowOf(
+            Expense(id = "dup-id", amount = 100.0, merchant = "Swiggy")
+        )
 
         val vm = buildVm(mapOf(
             "isDuplicate" to "true",

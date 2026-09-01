@@ -17,6 +17,7 @@ import io.mockk.coJustRun
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
@@ -64,9 +65,11 @@ class SettingsViewModelTest {
         coEvery {
             bulkSmsImportUseCase(fromMillis, any())
         } coAnswers {
+            delay(1) // let Loading(0, 0) be observed before progress arrives
             // Simulate progress callback being called once
             val onProgress = secondArg<suspend (Int, Int) -> Unit>()
             onProgress(5, 10)
+            delay(1) // let Loading(5, 10) be observed before Done
             Result.success(BulkSmsImportUseCase.ImportResult(imported = 8, skipped = 2, total = 10))
         }
 
@@ -105,7 +108,10 @@ class SettingsViewModelTest {
     @Test fun `startImport transitions to Error on failure`() = runTest {
         coEvery {
             bulkSmsImportUseCase(any(), any())
-        } returns Result.failure(RuntimeException("SMS permission denied"))
+        } coAnswers {
+            delay(1) // let Loading(0, 0) be observed before Error
+            Result.failure(RuntimeException("SMS permission denied"))
+        }
 
         val vm = buildVm()
 
@@ -124,7 +130,10 @@ class SettingsViewModelTest {
     @Test fun `startImport error message falls back when exception message is null`() = runTest {
         coEvery {
             bulkSmsImportUseCase(any(), any())
-        } returns Result.failure(RuntimeException())  // null message
+        } coAnswers {
+            delay(1) // let Loading(0, 0) be observed before Error
+            Result.failure(RuntimeException())  // null message
+        }
 
         val vm = buildVm()
         vm.importState.test {
