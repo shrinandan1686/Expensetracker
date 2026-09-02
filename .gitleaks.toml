@@ -14,9 +14,11 @@ tags = ["key", "firebase", "google"]
 [[rules]]
 id = "mongodb-srv-uri-with-credentials"
 description = "MongoDB connection string containing a real username and password"
-# Matches a connection string whose userinfo is actually filled in, while the
-# negative lookaheads let the docs' <user>:<password> placeholder form through.
-regex = '''mongodb(\+srv)?:\/\/(?!<)[^:\/\s<>]+:(?!<)[^@\/\s<>]+@'''
+# gitleaks compiles rules with Go's RE2 engine, which has no negative lookahead —
+# a (?!...) here makes gitleaks panic at config-parse time and scan nothing at all.
+# Excluding < and > from the userinfo character classes achieves the same thing:
+# the docs' <user>:<password> placeholder cannot match, because it starts with <.
+regex = '''mongodb(\+srv)?://[^:/?#\[\]@<>\s]+:[^:/?#\[\]@<>\s]+@'''
 tags = ["database", "mongodb"]
 
 [allowlist]

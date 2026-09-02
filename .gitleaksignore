@@ -1,0 +1,26 @@
+# Reviewed, accepted findings. One line per finding fingerprint:
+#   <commit>:<path>:<rule-id>:<line>
+#
+# This file exists so the scan can stay strict. Do not add entries to make CI
+# green — an entry means "a human looked at this and it is not exploitable".
+# Get a fingerprint from `gitleaks detect --report-path findings.json`.
+
+# ── Firebase Android API key in app/google-services.json (commit 28fda89) ─────
+#
+# Accepted, not a live exposure:
+#   * The file was untracked and gitignored in 026bdfb; it is not in the current
+#     tree. Only the historical commit still contains it.
+#   * The key is restricted in Google Cloud Console to the Android app
+#     com.trackit.expense plus this project's signing-certificate SHA-1, and
+#     narrowed to Identity Toolkit, Token Service and Firebase Installations.
+#     It cannot be used from anywhere except a copy of this app signed with our
+#     key, which is exactly why Google documents google-services.json as
+#     non-secret.
+#   * Purging it would need a full history rewrite and force push, changing every
+#     commit SHA and breaking existing clones, while the key would still sit in
+#     GitHub's cache unless rotated as well. Restricting it was the better trade.
+#
+# Both rules fire on the same line: gitleaks' built-in gcp-api-key and this
+# repo's own firebase-android-api-key rule.
+28fda892f4d92920b7d628eae6584de733b9eb70:app/google-services.json:gcp-api-key:31
+28fda892f4d92920b7d628eae6584de733b9eb70:app/google-services.json:firebase-android-api-key:31

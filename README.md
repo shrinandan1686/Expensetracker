@@ -781,6 +781,17 @@ It uses [gitleaks](https://github.com/gitleaks/gitleaks) when installed
 (`brew install gitleaks`) and falls back to a pattern scan otherwise, so the
 guard still works on a machine without it.
 
+### Accepted findings
+
+`.gitleaksignore` holds fingerprints of findings a human has reviewed and accepted,
+with the reasoning inline. It currently has one entry: the Firebase Android API key
+in commit `28fda89`, which is restricted in Google Cloud Console to this app's
+package name and signing certificate and so cannot be used elsewhere.
+
+Entries are fingerprint-scoped, not pattern-scoped — a *different* Google API key
+committed tomorrow still fails the scan. Add an entry only when the finding is
+genuinely not exploitable, never to turn CI green.
+
 ---
 
 ## Privacy
