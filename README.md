@@ -1,56 +1,293 @@
 # TrackIt
 
-An SMS-first expense tracker for India. TrackIt automatically parses bank and UPI SMS messages into expense records, syncs them to the cloud, and lets you split bills with friends — all without manual data entry.
+**An expense tracker that doesn't ask you to track expenses.**
+
+TrackIt reads the bank and UPI SMS your phone already receives, turns them into a
+categorised ledger without a single tap, and lets you split bills with friends that
+settle over UPI — in the app they already pay with.
+
+Android · Kotlin/Compose · Cloudflare Workers · MongoDB · [Product roadmap](ROADMAP.md) · [Privacy policy](PRIVACY.md)
+
+> **Status:** feature-complete on Android and verified on a physical device
+> (227 unit tests, 41 instrumented tests, 0 lint errors). The backend runs locally
+> but **is not yet deployed**, so there is no public production instance. See
+> [What's built — and what isn't](#whats-built--and-what-isnt) for the honest state.
 
 ---
 
-## Table of Contents
+## Contents
 
-1. [Features](#features)
-2. [Architecture](#architecture)
-3. [Project Structure](#project-structure)
-4. [Tech Stack](#tech-stack)
-5. [Backend API](#backend-api)
-6. [Android App](#android-app)
-7. [Local Development Setup](#local-development-setup)
-8. [Environment Variables](#environment-variables)
-9. [Database Schema](#database-schema)
-10. [Roadmap](#roadmap)
+**Product**
+[The problem](#the-problem) ·
+[Who it's for](#who-its-for) ·
+[The solution](#the-solution) ·
+[The strategic bet](#the-strategic-bet) ·
+[Decisions and trade-offs](#decisions-and-trade-offs) ·
+[What's built](#whats-built--and-what-isnt) ·
+[How I'd measure it](#how-id-measure-it) ·
+[Constraints that shaped the product](#constraints-that-shaped-the-product) ·
+[Roadmap](#roadmap)
+
+**Engineering**
+[Architecture](#architecture) ·
+[Project structure](#project-structure) ·
+[Tech stack](#tech-stack) ·
+[Backend API](#backend-api) ·
+[Android app](#android-app) ·
+[Local development](#local-development-setup) ·
+[Database schema](#database-schema) ·
+[Building a release](#building-a-release) ·
+[CI](#ci--secret-scanning) ·
+[Security model](#security-model)
 
 ---
 
-## Features
+## The Problem
 
-### Expense Tracking
-- **Automatic SMS parsing** — reads bank/UPI SMSes via `SmsReceiver`; no manual entry needed
-- **Bulk SMS import** — retroactively parse inbox on first install
-- **Manual add/edit** — full expense form with category, merchant, date, notes
-- **Expense detail** — deep-linkable (`trackit://expense_detail/{id}`)
-- **Unlogged expenses** — inbox of SMS-detected spends awaiting confirmation
+**Every expense tracker asks the user to do the one thing they will not do: log the
+expense.**
 
-### Sync & Budgets
-- **Cloud sync** — WorkManager-backed `SyncWorker` pushes local expenses to MongoDB; conflict resolution uses `updatedAt` timestamps (last-write-wins per device, newer wins across devices)
-- **Monthly budgets** — set category budgets; `BudgetAlertWorker` fires notifications near threshold
+Manual entry has to happen at the exact moment someone is spending money — at a
+counter, in a cab, splitting a dinner bill. That is the worst possible moment to ask
+for thirty seconds of data entry. So people log diligently for a week, miss a few
+days, and the ledger becomes wrong. Once it's wrong it's useless, and once it's
+useless they stop opening the app. The failure isn't motivation; it's that the
+product put work in the wrong place.
 
-### Group Splits
-- **Groups** — create named groups with emoji; add members by name/phone/UPI ID
-- **Splits** — add shared expenses; equal or custom participant amounts
-- **Balance simplification** — greedy min-transactions algorithm runs server-side; minimizes the number of payments needed to settle a group
-- **UPI settle-up** — one tap launches `upi://pay?pa=<upiId>&am=<amount>` which GPay/PhonePe picks up with pre-filled details. TrackIt never handles money.
-- **Settlement tracking** — pending → confirmed two-step flow; balances update on confirmation
+Meanwhile, the data already exists. In India, UPI is the default way money moves,
+and effectively every transaction generates an SMS from the bank within seconds —
+amount, merchant, account, timestamp. It is a complete, timestamped transaction
+feed sitting unused in the messages app — structured enough to parse, and already
+delivered to the one device the user always has.
 
-### Analytics & Reports
-- Monthly category breakdown with charts
-- Category totals use case aggregates Room data locally; `/api/analytics/summary` aggregates server-side via MongoDB `$group` pipeline
+The adjacent problem is settling up. Splitting costs with flatmates or on a trip
+means one person fronts the money and everyone forgets who owes what. Existing
+split apps track the debt but **stop at the ledger** — you still leave the app,
+open a payments app, retype the amount, and come back to mark it paid. The friction
+is at the last step, which is exactly where a debt goes unpaid.
 
-### Home Screen Widget
-- Glance-based widget showing today's spend and month-to-date total
-- Auto-refreshes via `WidgetRefreshWorker`
+### Why this space is open
 
-### Onboarding & Auth
-- Google Sign-In via Firebase Auth (no OTP, no phone number required)
-- 3-page onboarding: welcome → permissions → profile (name + UPI ID)
-- Profile editable later from Settings → My Profile
+SMS-based expense tracking isn't a new idea in India — Walnut and Money View both
+built on it years ago. What happened to that category is the interesting part:
+those products were acquired or pivoted toward lending, where the money is, and in
+2019 Google sharply restricted SMS and call-log permissions on Play, removing the
+capture mechanism for everyone who wanted to stay listed.
+
+So the approach was abandoned for two reasons, and neither was that it stopped
+working for users. It was abandoned because tracking expenses monetises badly
+compared to lending, and because the distribution channel closed.
+
+That leaves a genuine gap, and it defines the terms for anything filling it: it has
+to work outside the Play Store, and it has to be cheap enough to run without a
+lending business attached. Both are design constraints TrackIt accepts up front —
+see [Constraints that shaped the product](#constraints-that-shaped-the-product).
+
+**What none of them did was close the loop to payment.** UPI arrived after that
+generation of apps, and it is the piece that turns a ledger into a settlement: the
+transaction feed and the payment rail now both sit on the same phone, unconnected.
+
+---
+
+## Who It's For
+
+Urban Indian smartphone users, roughly 22–35, who:
+
+- pay for almost everything by UPI, across two or three accounts and cards
+- have tried a budgeting app and abandoned it within a month
+- regularly share costs — flatmates, couples, trips, group dinners
+- already have GPay or PhonePe installed and use it without thinking
+
+The second and third bullets are the interesting ones together: this user has
+already *tried and rejected* manual tracking, and has an ongoing social reason to
+need a shared ledger. They are not looking for another budgeting app. They are
+looking to not have to think about it.
+
+---
+
+## The Solution
+
+Three things, in priority order.
+
+### 1. Capture with zero user effort
+
+An SMS receiver reads incoming bank and UPI messages, parses amount, merchant,
+account and timestamp on-device, infers a category, and writes the expense. The
+user does nothing. First install also offers a bulk import of the existing inbox,
+so the app is useful with history from minute one rather than empty for a month.
+
+Parsed expenses land in an **Unlogged** inbox rather than silently into the ledger.
+Review is a one-tap confirm, and duplicate detection catches the same transaction
+arriving twice. The design principle: the app does the work and asks the user to
+approve, never the reverse.
+
+### 2. Splits that end in an actual payment
+
+Create a group, add a shared expense, split it equally or by custom amounts.
+Balances are simplified server-side with a greedy min-transactions algorithm, so a
+group of five settles in the fewest possible payments instead of a web of small
+IOUs.
+
+Settling is one tap: TrackIt builds a `upi://pay` intent pre-filled with the payee's
+UPI ID and the exact amount, and hands it to GPay or PhonePe. The user confirms in
+the app they already trust. **TrackIt never touches the money** — it holds no float,
+processes no payment, and needs no licence to operate.
+
+### 3. Local-first, so it's instant and works offline
+
+Room is the source of truth. Every screen reads local data, so the UI is immediate
+and the app works fully offline — including SMS capture, which is exactly when
+connectivity is least reliable. Sync is a background reconciliation, not a
+prerequisite for the app functioning.
+
+---
+
+## The Strategic Bet
+
+> Payments in India are a solved, regulated, winner-take-all market. The **ledger on
+> top of them is not.**
+
+Building payments would mean licences, capital, compliance, and competing with
+PhonePe, Google and Paytm. TrackIt deliberately doesn't. UPI already moved the
+money and the bank already sent the receipt — the unclaimed ground is the
+*record* of what happened and the *social graph* around who owes whom.
+
+That reframes the moat. It isn't technology; it's the accumulated ledger and the
+group relationships inside it. A user with two years of categorised history and
+four active groups has something they can't get by installing a competitor. The
+SMS parser is the wedge that makes accumulating that history free for them.
+
+It also makes the business viable at a hobby scale: no payment infrastructure means
+no per-transaction cost, which is why this runs on free tiers.
+
+---
+
+## Decisions and Trade-offs
+
+Every one of these closed off something real. Documenting the cost is the point.
+
+| Decision | Why | What I gave up |
+|---|---|---|
+| **Parse SMS on-device, never server-side** | Bank SMS is the most sensitive data the app touches. Parsing locally means messages never leave the phone, and it costs nothing to run. | No central improvement loop. A bank that changes its SMS format breaks parsing until the next app release, and I can't see or fix failures across users. |
+| **Google Sign-In, not phone OTP** | Free at any scale, no per-SMS cost, and works unchanged when iOS arrives. | Lost the phone number as the natural identity for splits — which is why adding a group member is still clumsier than it should be. Excludes users without a Google account. |
+| **Never handle money; deep-link to UPI** | No licence, no compliance burden, no float, no per-transaction cost. Users pay in an app they already trust more than mine. | Can't confirm a payment automatically. Settlement needs a two-step "mark paid → recipient confirms" flow, which is more taps and can be gamed by an impatient user. |
+| **Local-first with Room as source of truth** | Instant UI and full offline capability, which SMS capture genuinely needs. | Real distributed-sync problems: conflict resolution, tombstones for deletes, and a pull path — none of which a server-authoritative design would need. |
+| **Ship as a signed APK, not on Play** | SMS permissions are Play-restricted and automatic expense tracking isn't an approved use case. A submission would be rejected on policy, not quality. | No organic discovery, no automatic updates, and users must allow install from unknown sources. This is the single biggest growth constraint. |
+| **Free-tier infrastructure only** | $0 running cost keeps the project alive indefinitely without a business model. | MongoDB M0 has no automated backups — unacceptable for financial data long-term. Rate limits are per-datacenter, not global. |
+| **Simplify debts server-side** | One implementation, consistent across every client, and the client stays thin — which matters for the planned iOS app. | Balances need a network round-trip, so the one screen where users are most impatient is the one that can show a spinner. |
+| **Review queue instead of silent auto-add** | A wrong auto-captured expense corrupts the ledger, and a corrupted ledger is the exact failure mode that kills manual trackers too. | Reintroduces a small amount of user work — the thing the product exists to remove. Justified only because confirming is one tap and batched. |
+
+---
+
+## What's Built — and What Isn't
+
+### Working and verified
+
+| Area | What it does |
+|---|---|
+| **SMS capture** | `SmsReceiver` parses incoming bank/UPI SMS on-device; bulk inbox import on first run; duplicate detection; OTP and promotional messages explicitly discarded |
+| **Ledger** | Manual add/edit, categories, merchant, notes, deep-linkable detail (`trackit://expense_detail/{id}`), CSV export |
+| **Budgets** | Monthly overall and per-category budgets; `BudgetAlertWorker` notifies near threshold; weekly summary |
+| **Groups and splits** | Groups with members, equal or custom splits, server-side min-transaction balance simplification, `upi://pay` settle-up, pending → confirmed settlement tracking |
+| **Sync** | Bidirectional. Push of local changes plus an incremental pull keyed on an `updated_at` watermark, so a reinstall restores history and a second device sees the data. Soft-delete tombstones propagate deletions. |
+| **Analytics** | Monthly category breakdown, daily totals, charts; server-side aggregation via MongoDB `$group` |
+| **Widget** | Glance home-screen widget with today's and month-to-date spend |
+| **Auth and account** | Google Sign-In via Firebase; onboarding; profile with UPI ID; **full account deletion** that erases server and local data |
+
+### Not done, and why
+
+- **The backend is not deployed.** It runs under `wrangler dev` against a local
+  MongoDB connection. There is no public URL, so there is no production instance
+  and no real users yet. Deploying is a decision to start operating a service, not
+  just a command to run.
+- **Group membership has no invite acceptance.** A member can add another user's ID
+  to a group without that person agreeing. Fine for a trusted circle, wrong for
+  anything public — and the fix is blocked on not having phone-number identity.
+- **No audit trail** on split edits or settlement confirmations, so a disputed
+  balance can't be reconstructed.
+- **The local database is not encrypted at rest** beyond Android's own full-disk
+  encryption.
+- **`targetSdk` is deliberately still 34.** Play's floor doesn't apply to direct
+  APK distribution, and moving to 35+ enforces edge-to-edge layout and changes
+  foreground-service rules. That's a tested change, not a version bump.
+- **No iOS, no share links, no KMP migration** — see [Roadmap](#roadmap).
+
+---
+
+## How I'd Measure It
+
+The entire thesis is "capture without effort", so the metrics have to test that
+specifically rather than reporting generic engagement.
+
+**The one number that matters**
+
+> **Auto-capture rate** — auto-captured expenses ÷ total expenses recorded.
+> If this isn't high, TrackIt is just a manual tracker with extra permissions, and
+> the whole premise is wrong.
+
+**Activation funnel** — where the thesis is won or lost, in the first session
+
+| Step | What it tests |
+|---|---|
+| Install → SMS permission granted | Whether the value proposition justifies a scary permission |
+| Permission → ≥1 expense auto-captured | Whether the parser works on this user's bank |
+| Bulk import → ≥30 days of history present | Whether the app is useful immediately instead of empty |
+| First session → first confirmed expense | Whether review-and-confirm is understood |
+
+**Parser quality** — the product's core competence, and its main failure mode
+
+- Confirm-without-edit rate on unlogged expenses (precision proxy: did we parse it right?)
+- Discard rate (false positives: did we surface something that wasn't a transaction?)
+- Unparsed-SMS sampling by bank sender, to find formats the parser misses
+
+**Retention** — the metric manual trackers fail
+
+- D7 / D30 weekly-active, segmented by whether SMS permission was granted. If
+  granted and denied cohorts retain the same, automatic capture isn't the driver.
+
+**Social loop** — the compounding part
+
+- Groups created per active user; median group size
+- Share of settlements completed through the UPI deep link vs abandoned
+- Time from balance created to settled
+
+**Guardrails** — things that would mean I'm winning the metric and losing the user
+
+- Notification opt-out rate (budget alerts becoming noise)
+- Battery-optimisation exemption revoked (the app feeling too costly to keep)
+- Sync failure rate and unresolved conflicts
+
+---
+
+## Constraints That Shaped the Product
+
+**A policy constraint became a distribution strategy.** `READ_SMS` and
+`RECEIVE_SMS` are restricted permissions on Google Play, and the approved use cases
+are things like being the default SMS handler or a backup tool. Automatic expense
+tracking is not on the list. A Play submission would be rejected regardless of code
+quality.
+
+That left three options: drop SMS auto-capture and pass review, submit and argue for
+an exception, or distribute outside Play. The first destroys the only reason the
+product exists. The second is a coin flip that costs weeks. So TrackIt ships as a
+signed APK from GitHub Releases and accepts that it will never have organic install
+growth.
+
+That single constraint cascades into everything else: no store discovery means no
+growth loop from search, which is why the group-invite share link matters more than
+it otherwise would — a friend inviting you is the only distribution channel left.
+
+**Free tier as a hard requirement.** With no revenue, the running cost has to be
+zero, which is why the architecture avoids anything with per-request pricing and
+why the app never touches money. The honest cost is MongoDB M0's lack of automated
+backups, which is fine for a small trusted group and unacceptable at scale.
+
+---
+
+# Engineering
+
+Everything above is the product case. Everything below is how it is actually built,
+tested and shipped.
 
 ---
 
@@ -434,16 +671,27 @@ npx wrangler secret put MONGODB_URI
   createdAt, confirmedAt }
 ```
 
-### Room (SQLite) — v7
+### Room (SQLite) — v8
+
+Migrations live in `DatabaseMigrations.ALL` and cover every consecutive version
+pair; `MigrationTest` runs the full 3 → 8 chain on a device and asserts data
+survives. Schemas are exported to `app/schemas/` so a migration can be diffed
+against what Room actually expects. Destructive fallback is debug-only — in release
+a missing migration fails at open time rather than silently erasing history.
 
 | Table | Key columns |
 |---|---|
-| `expenses` | `id`, `userId`, `amount`, `category`, `merchant`, `month`, `transactionAt`, `updatedAt` |
+| `expenses` | `id`, `userId`, `amount`, `category`, `merchant`, `month`, `transactionAt`, `updatedAt`, `isDeleted` |
 | `budgets` | `userId`, `month`, `totalBudget`, `categoryBudgetsJson` |
 | `groups` | `id`, `name`, `emoji`, `createdBy`, `membersJson`, `createdAt` |
 | `splits` | `id`, `groupId`, `description`, `totalAmount`, `paidBy`, `participantsJson`, `createdAt` |
 
 `membersJson` and `participantsJson` store serialized JSON arrays (via Gson) since Room does not support nested objects.
+
+`isDeleted` is a soft-delete tombstone: the row survives locally so the deletion can
+be pushed to the server, every read query filters it out, and it is purged once the
+server acknowledges it. Hard-deleting meant the server never learned about the
+deletion and the expense reappeared on the next pull.
 
 ---
 
@@ -620,21 +868,49 @@ can never consume someone else's quota.
 
 ## Roadmap
 
-| Phase | Status | Description |
+Sequenced by dependency, not by appeal. Each phase exists because the next one is
+wrong to build without it.
+
+| Phase | Status | Why it comes here |
 |---|---|---|
-| 1 — Foundations | ✅ Complete | Firebase auth, user profiles, sync conflict resolution, onboarding |
-| 2 — Group Splits | 🔄 In progress | Backend + Android groups/splits/settlements (2.1–2.4 done; 2.5 share links pending) |
-| 3 — KMP Migration | Planned | Move domain + use cases to Kotlin Multiplatform shared module |
-| 4 — iOS | Planned | SwiftUI app using KMP shared module; email-based import instead of SMS |
+| **1 — Foundations** | ✅ Complete | Auth, identity and sync correctness. Social features built on broken sync produce corrupted shared balances, which is worse than having no social features. |
+| **2 — Group splits** | ✅ Android complete | The retention and distribution engine. Solo tracking is a habit that decays; a shared ledger has other people asking about it. |
+| **2.5 — Invite share links** | Next | With no app store, a friend's invite is the *only* distribution channel. This is the growth work. |
+| **3 — KMP migration** | Planned | Move domain, use cases and the SMS parser to a shared module. Pure enablement for Phase 4 — no user-visible change, so it's only worth doing immediately before iOS. |
+| **4 — iOS** | Planned | Doubles the addressable group size. Groups break when one member can't join, so iOS absence caps the social feature, not just the user count. |
 
-### Phase 2.5 — Viral Share Links (next up)
-Allow a group creator to generate a join link. Non-users who open the link see a web preview of the group and a prompt to install TrackIt. Existing users deep-link directly into the group.
+### Phase 2.5 — Invite share links (next up)
 
-### Phase 3 — KMP
-Migrate `domain/model/`, `domain/repository/`, `domain/usecase/`, and `SmsParser` to a shared Kotlin Multiplatform module. Android app continues to use Room + Compose. iOS app (Phase 4) reuses the shared module with SwiftUI.
+A group creator generates a join link. A non-user opening it sees a web preview of
+the group and a prompt to install; an existing user deep-links straight into the
+group. This also fixes the invite-acceptance gap — joining via a link is consent,
+which the current add-by-user-ID flow lacks.
+
+### Phase 3 — Kotlin Multiplatform
+
+Migrate `domain/model/`, `domain/repository/`, `domain/usecase/` and `SmsParser`
+into a shared module. Android keeps Room and Compose. Deliberately deferred: it
+buys nothing for Android users on its own, and doing it early means maintaining a
+multiplatform build for months before anything consumes it.
 
 ### Phase 4 — iOS
-- SwiftUI UI layer
-- KMP shared domain/use-case/repository interfaces
-- No SMS (iOS restriction) — email forwarding flow as substitute
-- UPI deep links work on iOS via GPay/PhonePe iOS apps
+
+SwiftUI on top of the KMP shared module. **iOS cannot read SMS** — there is no
+equivalent API — so the capture wedge doesn't transfer. The substitute is email
+forwarding of bank alerts, which is meaningfully worse, and worth being honest
+about: on iOS, TrackIt is a splits app with manual entry rather than a zero-effort
+tracker. UPI deep links work normally, since GPay and PhonePe both ship iOS apps.
+
+---
+
+## Product Documentation
+
+- **[ROADMAP.md](ROADMAP.md)** — full phase breakdown with decisions log and status
+- **[PRIVACY.md](PRIVACY.md)** — user-facing privacy policy
+- **[FIREBASE_SETUP.md](FIREBASE_SETUP.md)** — one-time Firebase configuration
+
+---
+
+## License
+
+[MIT](LICENSE)
