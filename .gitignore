@@ -55,3 +55,4 @@ file-system-probe.gradle
 # Claude Code skill outputs
 graphify-out/
 .graphify_*
+.claude/settings.local.json
